@@ -1,3 +1,6 @@
 [submodule "packages"]
 	path = packages
 	url = git@gitee.com:atlisp/packages.git
+[submodule "atlisp-lib"]
+	path = atlisp-lib
+	url = git@gitee.com:atlisp/atlisp-lib.git
