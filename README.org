@@ -24,15 +24,31 @@ $ git submodule sync --recursive
 
   按 @lisp 应用包 的文件及内容要求组织目录结构
 
-  包含 一个 pkg.lsp 文件。
+  包含一个 pkg.lsp 文件。
 
   这个文件是个包定义文件。用于说明该包的名称，用途，版本等。
 
+  其它 lsp 代码文件及必要的其它格式的文件组成
+
+  @lisp 系统具有以下底层开发框架：
+  - 界面（菜单及面板）
+  - 配置管理
+  - 用户管理
+  - 应用管理
+  - 自动升级
+
+  详见 @lisp 文档（编写中）
+
 * 将您的应用登记到 @lisp
 
-  @lisp 支持去中心化的分布式包管理,只要将你开发的应用注册到 atlisp/packages 仓库即可。
+  @lisp 支持去中心化的分布式包管理。
 
-  例如：你的应用包为 https://gitee.com/yourname/yourapp
+  只要您的应用包支持 git 拉取，不管代码位于 Github 还是 Gitee ,还是您自建的 git 服务器， @lisp 都可以完成您的应用的部署。
+
+  只需将你开发的应用注册到 http://gitee.com/atlisp/packages 仓库。
+
+
+  示例：你的应用包为 https://gitee.com/yourname/yourapp
 
   注册步骤如下：
 #+BEGIN_SRC 
@@ -41,11 +57,13 @@ $ cd packages
 $ git pull
 $ git submodule add https://gitee.com/yourname/yourapp.git
 $ git add .
-$ git commit -m "add package youapp in @lisp"
+$ git commit -m "add package yourapp in @lisp"
 $ git push 
 #+END_SRC
 
-  同样的支持世界各地的分布式应用，如  github.中托管的应用。
+  同样的支持世界各地的分布式应用，如 github.中托管的应用。
+
+  例如：你的应用包为 https://github.com/yourname/yourapp1
 
 #+BEGIN_SRC 
 $ git clone https://gitee.com/atlisp/packages.git
@@ -53,13 +71,15 @@ $ cd packages
 $ git pull
 $ git submodule add https://github.com/yourname/yourapp1.git
 $ git add .
-$ git commit -m "add package youapp in @lisp"
+$ git commit -m "add package yourapp1 in @lisp"
 $ git push 
 #+END_SRC
 
-  唯一的要求是 yourapp yourapp1 的名称须具有唯一性，不能重名。
+  唯一的要求是您帐户下的仓库名称 yourapp yourapp1 的名称须具有唯一性，不能与其它人的仓库重名。
 
   以上操作完成后。 @lisp 的应用列表中就会显示你的包信息，并提供给需要的最终用户使用。
+
+
 
 
 
