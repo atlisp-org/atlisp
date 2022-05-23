@@ -1,12 +1,15 @@
 #+title: @lisp 
 
 * 克隆 @lisp 
-
   克隆 @lisp 及子模块 packages 和 atlisp-lib 
+
+  以下命令将下载(拉取)全部 @lisp 。
 #+BEGIN_SRC 
 $ git clone git@gitee.com:atlisp/atlisp.git 
 $ cd atlisp
 $ git submodule update --init
+$ cd packages
+$ git submodule update --init 
 #+END_SRC
 
 * 开发 @lisp 应用包
