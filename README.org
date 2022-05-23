@@ -1,0 +1,37 @@
+#+title: @lisp 
+
+* 克隆 @lisp 
+
+  克隆 @lisp 及子模块 packages 和 atlisp-lib 
+#+BEGIN_SRC 
+$ git clone git@gitee.com:atlisp/atlisp.git 
+$ cd atlisp
+$ git submodule update --init
+#+END_SRC
+
+* 开发 @lisp 应用包
+
+  按 @lisp 应用包 的文件及内容要求组织目录结构
+
+  包含 一个 pkg.lsp 文件。
+
+  这个文件是个包定义文件。用于说明该包的名称，用途，版本等。
+
+* 登记到 @lisp
+
+  @lisp支持去中心化的分布式管理,只要将你开发的应用注册到 atlisp/packages 仓库即可。
+
+  例如：你的应用包为 https://gitee.com/yourname/yourapp
+
+  注册步骤如下：
+#+BEGIN_SRC 
+$ git clone https://gitee.com/atlisp/packages.git
+$ cd packages
+$ git pull
+$ git submodule add https://gitee.com/yourname/youapp.git
+$ git push 
+#+END_SRC
+
+以上操作完成后。 @lisp 就会显示你的包信息，并可以提供给最终用户使用。
+
+
