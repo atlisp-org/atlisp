@@ -17,9 +17,9 @@ $ git submodule update --init
 
   这个文件是个包定义文件。用于说明该包的名称，用途，版本等。
 
-* 登记到 @lisp
+* 将您的应用登记到 @lisp
 
-  @lisp支持去中心化的分布式管理,只要将你开发的应用注册到 atlisp/packages 仓库即可。
+  @lisp 支持去中心化的分布式包管理,只要将你开发的应用注册到 atlisp/packages 仓库即可。
 
   例如：你的应用包为 https://gitee.com/yourname/yourapp
 
@@ -29,6 +29,8 @@ $ git clone https://gitee.com/atlisp/packages.git
 $ cd packages
 $ git pull
 $ git submodule add https://gitee.com/yourname/yourapp.git
+$ git add .
+$ git commit -m "add package youapp in @lisp"
 $ git push 
 #+END_SRC
 
@@ -39,11 +41,15 @@ $ git clone https://gitee.com/atlisp/packages.git
 $ cd packages
 $ git pull
 $ git submodule add https://github.com/yourname/yourapp1.git
+$ git add .
+$ git commit -m "add package youapp in @lisp"
 $ git push 
 #+END_SRC
 
   唯一的要求是 yourapp yourapp1 的名称须具有唯一性，不能重名。
 
-  以上操作完成后。 @lisp 就会显示你的包信息，并可以提供给最终用户使用。
+  以上操作完成后。 @lisp 的应用列表中就会显示你的包信息，并提供给需要的最终用户使用。
+
+
 
 
