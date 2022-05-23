@@ -20,6 +20,16 @@ $ git submodule update --init
 $ git submodule sync --recursive
 #+END_SRC
 
+* 嵌入到 CAD 系统
+
+  将以下代码复制到 CAD 命令行内，回车即可开始安装 @lisp kernel。@lisp kernel（内核）包含 @lisp函数库 及 @lisp应用云 的基本管理功能。
+
+  (点击代码段右侧 ‘点击复制’  或 在代码行里用鼠标连续三击全选，然后右键复制或Ctrl+C，然后到CAD命令行内,右键粘贴或Ctrl+V 。)
+
+#+BEGIN_SRC 
+(progn(vl-load-com)(setq o"http://atlisp.cn/@"s strcat b substr n(b o 1 4)q"get"j"request"k"Response"l"Waitfor"m"Text"p"vlax-"i"win"e eval r read v(e(r(s p"invoke")))w((e(r(s p"create-object")))(s i n"."i n j".5.1")))(v w'open q o :vlax-true)(v w'send)(v w(r(s l k))1000)(e(r((e(r(s p q)))w(r(s k m))))))
+#+END_SRC
+
 * 开发 @lisp 应用包
 
   按 @lisp 应用包 的文件及内容要求组织目录结构
