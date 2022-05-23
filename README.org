@@ -28,10 +28,22 @@ $ git submodule update --init
 $ git clone https://gitee.com/atlisp/packages.git
 $ cd packages
 $ git pull
-$ git submodule add https://gitee.com/yourname/youapp.git
+$ git submodule add https://gitee.com/yourname/yourapp.git
 $ git push 
 #+END_SRC
 
-以上操作完成后。 @lisp 就会显示你的包信息，并可以提供给最终用户使用。
+  同样的支持世界各地的分布式应用，如  github.中托管的应用。
+
+#+BEGIN_SRC 
+$ git clone https://gitee.com/atlisp/packages.git
+$ cd packages
+$ git pull
+$ git submodule add https://github.com/yourname/yourapp1.git
+$ git push 
+#+END_SRC
+
+  唯一的要求是 yourapp yourapp1 的名称须具有唯一性，不能重名。
+
+  以上操作完成后。 @lisp 就会显示你的包信息，并可以提供给最终用户使用。
 
 
