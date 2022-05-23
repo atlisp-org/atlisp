@@ -22,12 +22,10 @@
 *.dwl2
 *.libdoc
 *.cdc
-#*.*#
-.#*
+*#
 Thumbs.db
 *.html
 *.zip
-*.shx
 *.log
 /dev-mode
 /.check-newversion
