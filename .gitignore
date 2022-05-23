@@ -1,4 +1,5 @@
 .cache/
+/kernel/
 *~
 *.bak
 *.csv
