@@ -1,6 +1,16 @@
 #+title: @lisp CAD应用云管理系统
 
 * 克隆 @lisp 
+#+BEGIN_SRC mermain
+graph TD;
+A((Atlisp根仓库))--> B( Atlisp应用中心);
+A--> C( Atlisp函数库);
+B--> D(gitub 仓库);
+B--> E(gitee 仓库);
+B--> D(gitlab 仓库);
+B--> F(自建git仓库);
+#+END_SRC
+
   克隆 @lisp 及子模块 packages 和 atlisp-lib 
 
   安装到用户目录下的 atlisp/
