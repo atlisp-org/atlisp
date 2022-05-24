@@ -5,10 +5,10 @@
 graph TD;
 A((Atlisp根仓库))--> B( Atlisp应用中心);
 A--> C( Atlisp函数库);
-B--> D(gitub 仓库);
-B--> E(gitee 仓库);
-B--> D(gitlab 仓库);
-B--> F(自建git仓库);
+B-->|...| D(gitub 仓库);
+B-->|...| E(gitee 仓库);
+B-->|...| F(gitlab 仓库);
+B-->|...| G(自建git仓库);
 #+END_SRC
 
   克隆 @lisp 及子模块 packages 和 atlisp-lib 
@@ -16,7 +16,7 @@ B--> F(自建git仓库);
   安装到用户目录下的 atlisp/
 
   以下命令将下载(拉取)全部 @lisp 。
-#+BEGIN_SRC sh
+#+BEGIN_SRC shell
 $ cd ~/
 $ git clone git@gitee.com:atlisp/atlisp.git 
 $ cd atlisp
