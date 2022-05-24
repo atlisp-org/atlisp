@@ -27,6 +27,7 @@ $ git submodule update --init
 
   同步更新全部仓库（包含子模块）
 #+BEGIN_SRC 
+$ git submodule foreach git pull origin main
 $ git submodule sync --recursive
 #+END_SRC
 
