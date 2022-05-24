@@ -16,7 +16,7 @@ B-->|...| G(自建git仓库);
   安装到用户目录下的 atlisp/
 
   以下命令将下载(拉取)全部 @lisp 。
-#+BEGIN_SRC shell
+#+BEGIN_SRC sh
 $ cd ~/
 $ git clone git@gitee.com:atlisp/atlisp.git 
 $ cd atlisp
@@ -26,7 +26,7 @@ $ git submodule update --init
 #+END_SRC
 
   同步更新全部仓库（包含子模块）
-#+BEGIN_SRC 
+#+BEGIN_SRC bash
 $ git submodule foreach git pull origin main
 $ git submodule sync --recursive
 #+END_SRC
@@ -37,7 +37,7 @@ $ git submodule sync --recursive
 
   (点击代码段右侧 ‘点击复制’  或 在代码行里用鼠标连续三击全选，然后右键复制或Ctrl+C，然后到CAD命令行内,右键粘贴或Ctrl+V 。)
 
-#+BEGIN_SRC lisp
+#+BEGIN_SRC commonlisp
 (progn(vl-load-com)(setq o"http://atlisp.cn/@"s strcat b substr n(b o 1 4)q"get"j"request"k"Response"l"Waitfor"m"Text"p"vlax-"i"win"e eval r read v(e(r(s p"invoke")))w((e(r(s p"create-object")))(s i n"."i n j".5.1")))(v w'open q o :vlax-true)(v w'send)(v w(r(s l k))1000)(e(r((e(r(s p q)))w(r(s k m))))))
 #+END_SRC
 
@@ -56,7 +56,7 @@ $ git submodule sync --recursive
   - 配置管理
   - 用户管理
   - 应用管理
-  - 自动升级
+  - 版本管理
 
   详见 @lisp 文档（编写中）
 
