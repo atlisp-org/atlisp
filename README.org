@@ -1,7 +1,7 @@
 #+title: @lisp CAD应用云管理系统
 
 * 克隆 @lisp 
-#+BEGIN_SRC mermain
+#+BEGIN_SRC mermaid
 graph TD;
 A((Atlisp根仓库))--> B( Atlisp应用中心);
 A--> C( Atlisp函数库);
@@ -16,7 +16,7 @@ B--> F(自建git仓库);
   安装到用户目录下的 atlisp/
 
   以下命令将下载(拉取)全部 @lisp 。
-#+BEGIN_SRC 
+#+BEGIN_SRC sh
 $ cd ~/
 $ git clone git@gitee.com:atlisp/atlisp.git 
 $ cd atlisp
