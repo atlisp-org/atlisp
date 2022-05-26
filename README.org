@@ -2,13 +2,18 @@
 
 * 克隆 @lisp 
 #+BEGIN_SRC mermaid
-graph TD;
-A((Atlisp根仓库))--> B( Atlisp应用中心);
-A--> C( Atlisp函数库);
-B-->|...| D(gitub 仓库);
-B-->|...| E(gitee 仓库);
-B-->|...| F(gitlab 仓库);
-B-->|...| G(自建git仓库);
+  graph TD;
+  O(AutoCAD用户)-->|...|A((Atlisp根仓库));
+  P(GstarCAD用户) -->|...|A;
+  Q(ZWCAD用户)-->|...|A;
+  R(其它支持lisp的CAD用户)-->A;
+  A--> B( Atlisp函数库);
+  A--> C( Atlisp应用中心);
+  A--> D( Atlisp文档);    
+  C-->|...| H(gitub 仓库);
+  C-->|...| E(gitee 仓库);
+  C-->|...| F(gitlab 仓库);
+  C-->|...| G(自建git仓库);
 #+END_SRC
 
   克隆 @lisp 及子模块 packages 和 atlisp-lib 
