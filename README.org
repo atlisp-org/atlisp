@@ -1,6 +1,6 @@
 #+title: @lisp CAD应用云管理系统
 
-* 克隆 @lisp 
+* @lisp 系统架构
 #+BEGIN_SRC mermaid
   graph TD;
   O(AutoCAD用户)-->|...|A((Atlisp根仓库));
@@ -16,18 +16,20 @@
   C-->|...| G(自建git仓库);
 #+END_SRC
 
+* 克隆 @lisp 
+
   克隆 @lisp 及子模块 packages 和 atlisp-lib 
 
   安装到用户目录下的 atlisp/
 
   以下命令将下载(拉取)全部 @lisp 。
 #+BEGIN_SRC sh
-$ cd ~/
-$ git clone git@gitee.com:atlisp/atlisp.git 
-$ cd atlisp
-$ git submodule update --init
-$ cd packages
-$ git submodule update --init 
+  $ cd ~/
+  $ git clone git@gitee.com:atlisp/atlisp.git 
+  $ cd atlisp
+  $ git submodule update --init --recursive
+  $ git submodule foreach git checkout main
+  $ git submodule foreach git pull pull --rebase origin main
 #+END_SRC
 
   同步更新全部仓库（包含子模块）
@@ -61,9 +63,10 @@ $ git submodule sync --recursive
   - 配置管理
   - 用户管理
   - 应用管理
+  - i18n 国际化与本地化
   - 版本管理
 
-  详见 @lisp 文档（编写中）
+  详见 @lisp 文档
 
 * 将您的应用登记到 @lisp
 
