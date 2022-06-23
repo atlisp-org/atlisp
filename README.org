@@ -12,7 +12,7 @@
   A--> D( Atlisp文档);    
   C-->|...| H(gitub 仓库);
   C-->|...| E(gitee 仓库);
-  C-->|...| F(gitlab 仓库);
+  C-->|...| F(gitlab 私有仓库);
   C-->|...| G(自建git仓库);
 #+END_SRC
 
