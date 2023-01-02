@@ -5,6 +5,6 @@ cd ~/atlisp
 git pull
 git submodule update --init --recursive
 #git submodule foreach git checkout main
-git submodule foreach git pull origin main
+git submodule foreach git pull --rebase origin main
 echo Sync all submodules.
 sleep 5
