@@ -7,3 +7,6 @@
 [submodule "docs"]
 	path = docs
 	url = https://gitee.com/atlisp/atlisp-docs.git
+[submodule "vscode"]
+	path = vscode
+	url = https://gitee.com/atlisp/atlispext.git
