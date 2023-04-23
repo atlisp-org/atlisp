@@ -25,7 +25,7 @@
   以下命令将下载(拉取)全部 @lisp 。
 #+BEGIN_SRC sh
   $ cd ~/
-  $ git clone git@gitee.com:atlisp/atlisp.git 
+  $ git clone https://gitee.com/atlisp/atlisp.git 
   $ cd atlisp
   $ git submodule update --init --recursive
   $ git submodule foreach git checkout main
