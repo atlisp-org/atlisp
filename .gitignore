@@ -39,3 +39,6 @@ Thumbs.db
 /tmp
 /hotkey.cfg
 /test/
+.tmp/
+.vscode/
+packages-private/
