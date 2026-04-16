@@ -2,75 +2,61 @@
 
 ## Repo Structure
 
-This is the **root monorepo** for the @lisp ecosystem. It contains 4 git submodules and several top-level directories.
-
-### Submodules (must be cloned separately)
-- `packages/` — application package registry (gitee.com/atlisp/packages)
-- `lib/` — @lisp function library, one `.lsp` file per function under `src/`
-- `docs/` — documentation (gitee.com/atlisp/atlisp-docs)
-- `vscode/` — VSCode extension source (gitee.com/atlisp/atlispext)
-
-After cloning, initialize submodules:
+Root monorepo with 4 git submodules. Submodules may not be initialized; clone with:
 ```sh
 git submodule update --init --recursive
 git submodule foreach git checkout main
 ```
 
-Sync all submodules: `./sync-all.sh` (requires running from `~/atlisp`)
+Sync submodules: `./sync-all.sh` (hardcoded to `~/atlisp`, must run from home)
 
-### Top-level directories
-- `kernel/` — @lisp CAD client kernel (self-contained, its own git repo)
-- `packages/` — **git submodule**; contains ~75 @lisp application packages
-- `lib/` — **git submodule**; @lisp function library source
-- `docs/` — **git submodule**; documentation
-- `vscode/` — **git submodule**; VSCode extension source
-- `pattern/` — CAD hatch pattern (`.pat`) files, ~1800 files, not source code
-- `private-packages/` — private/non-distributed packages
+### Directories
+- `kernel/` — CAD client kernel (separate git repo, not submodule)
+- `packages/` — git submodule; ~90 @lisp application packages
+- `lib/` — git submodule; function library (one `.lsp` per function under `src/`)
+- `docs/` — git submodule; documentation
+- `vscode/` — git submodule; VSCode extension
+- `pattern/` — CAD hatch patterns (~1800 `.pat` files, not source)
+- `private-packages/` — private packages
 
-## VSCode Extension Development
+## VSCode Extension (vscode/)
 
-The only non-trivial build step is the `vscode/` subdirectory.
-
-### Build commands (from `vscode/` directory)
+Only non-trivial build. Commands from `vscode/` directory:
 ```sh
-npm install              # install deps
-npm run esbuild          # dev build with sourcemaps -> dist/main.js
+npm install
+npm run esbuild          # dev: sourcemaps -> dist/main.js
 npm run esbuild-watch    # watch mode
-npm run vscode:prepublish # production build (minifies, runs pre-build tools)
-npm run test-compile     # TypeScript compile check only (no test runner)
+npm run vscode:prepublish # prod: minify + pre-build
+npm run test-compile     # TypeScript check only
 ```
 
-### Build pipeline
-`vscode:prepublish` runs: `tools/pre-build.js` (generates `syntaxes/autolisp.tmLanguage.json` from snippet keys) → `merge-snippets.js` → esbuild minify.
+Pipeline: `pre-build.js` → `merge-snippets.js` → esbuild minify.
 
-The extension entry point is `src/extension.ts`. Output is `dist/main.js`.
+Entry: `src/extension.ts`. Output: `dist/main.js`.
 
-### Language IDs
-- `autolisp` — `.lsp`, `.mnl` files
-- `autolispdcl` — `.dcl` files
+Language IDs: `autolisp` (.lsp, .mnl), `autolispdcl` (.dcl).
 
-### Testing
-No test runner is configured in `package.json`. The `devDependencies` include mocha, chai, ts-node, nyc, but no test script or test files are present.
+No test runner configured.
 
-## @lisp Package Conventions
+## Package Conventions
 
-Each package in `packages/` must contain a `pkg.lsp` file at its root (the package definition).
+Each package needs `pkg.lsp` at root (package definition).
 
-### Function library conventions (`lib/src/`)
-- One function per `.lsp` file
-- File location under `src/` determines function namespace: e.g. `src/color/rgb2truecolor.lsp` → function `color:rgb2truecolor`
-- Function definition format (for doc generation):
+### Function library (lib/src/)
+- One `.lsp` file per function
+- Path determines namespace: `src/color/rgb2truecolor.lsp` → `color:rgb2truecolor`
+- Format (for doc gen):
 ```lisp
 (defun block:insert (para)
-  "函数功能说明"
+  "功能说明"
   "返回值类型"
-  "示例代码"
-  ;; implementation
+  "示例"
+  ;; impl
 )
 ```
 
 ## Encoding
-All LSP source files use **UTF-8** encoding. Using GB2312/ANSI causes bracket mismatch issues in the CAD environment.
+Use **UTF-8**. GB2312/ANSI breaks bracket matching in CAD.
 
 ## CAD Compatibility
-@lisp targets: AutoCAD 2006+, GstarCAD 2015+, ZWCAD 2015+, BricsCAD, and other VLISP-compatible CAD platforms.
+AutoCAD 2006+, GstarCAD 2015+, ZWCAD 2015+, BricsCAD, VLISP-compatible CAD.
