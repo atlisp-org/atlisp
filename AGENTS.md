@@ -1,76 +1,91 @@
 # @lisp CAD应用云管理系统 — Agent Instructions
 
-## Repo Structure
+## 仓库结构
 
-This is the **root monorepo** for the @lisp ecosystem. It contains 4 git submodules and several top-level directories.
+根仓库包含 **4 个 git 子模块** + kernel（独立仓库）+ 私有目录。
 
-### Submodules (must be cloned separately)
-- `packages/` — application package registry (gitee.com/atlisp/packages)
-- `lib/` — @lisp function library, one `.lsp` file per function under `src/`
-- `docs/` — documentation (gitee.com/atlisp/atlisp-docs)
-- `vscode/` — VSCode extension source (gitee.com/atlisp/atlispext)
+### 子模块（已初始化）
+- `packages/` — ~75 个应用包 (gitee.com/atlisp/packages)
+- `lib/` — 函数库，`src/` 目录下每个 `.lsp` 文件一个函数
+- `docs/` — 文档
+- `vscode/` — VSCode 扩展源码
 
-After cloning, initialize submodules:
+### 顶层目录
+- `kernel/` — @lisp CAD 客户端内核（独立 git 仓库）
+- `packages/` — **子模块**；应用包
+- `lib/` — **子模块**；函数库
+- `docs/` — **子模块**；文档
+- `vscode/` — **子模块**；VSCode 扩展
+- `pattern/` — CAD 填充图案 `.pat` 文件（约 1800 个）
+- `private-packages/` — 私有/非分发包
+
+## 常用脚本
+
+### 同步所有子模块
 ```sh
+./sync-all.sh
+# 或手动执行（必须在 ~/atlisp 目录运行，因为脚本硬编码了路径）
+cd ~/atlisp
+git submodule sync --recursive
 git submodule update --init --recursive
 git submodule foreach git checkout main
+git submodule foreach git pull
 ```
 
-Sync all submodules: `./sync-all.sh` (requires running from `~/atlisp`)
-
-### Top-level directories
-- `kernel/` — @lisp CAD client kernel (self-contained, its own git repo)
-- `packages/` — **git submodule**; contains ~75 @lisp application packages
-- `lib/` — **git submodule**; @lisp function library source
-- `docs/` — **git submodule**; documentation
-- `vscode/` — **git submodule**; VSCode extension source
-- `pattern/` — CAD hatch pattern (`.pat`) files, ~1800 files, not source code
-- `private-packages/` — private/non-distributed packages
-
-## VSCode Extension Development
-
-The only non-trivial build step is the `vscode/` subdirectory.
-
-### Build commands (from `vscode/` directory)
+### 推送 packages 包更改
 ```sh
-npm install              # install deps
-npm run esbuild          # dev build with sourcemaps -> dist/main.js
-npm run esbuild-watch    # watch mode
-npm run vscode:prepublish # production build (minifies, runs pre-build tools)
-npm run test-compile     # TypeScript compile check only (no test runner)
+./push-pkg.sh <包名> "提交信息"
 ```
 
-### Build pipeline
-`vscode:prepublish` runs: `tools/pre-build.js` (generates `syntaxes/autolisp.tmLanguage.json` from snippet keys) → `merge-snippets.js` → esbuild minify.
+### 配置 Git 用户
+```sh
+./config-git.sh "用户名" "邮箱"
+```
 
-The extension entry point is `src/extension.ts`. Output is `dist/main.js`.
+## VSCode 扩展开发
 
-### Language IDs
-- `autolisp` — `.lsp`, `.mnl` files
-- `autolispdcl` — `.dcl` files
+唯一需要构建的是 `vscode/` 子目录。
 
-### Testing
-No test runner is configured in `package.json`. The `devDependencies` include mocha, chai, ts-node, nyc, but no test script or test files are present.
+### 构建命令（在 vscode/ 目录下运行）
+```sh
+npm install              # 安装依赖
+npm run esbuild          # 开发构建（带 sourcemap）-> dist/main.js
+npm run esbuild-watch    # 监听模式
+npm run vscode:prepublish # 生产构建（压缩，执行预构建工具）
+npm run test-compile     # TypeScript 编译检查（无测试运行器）
+```
 
-## @lisp Package Conventions
+### 构建流程
+`vscode:prepublish` 执行：`tools/pre-build.js`（从 snippet keys 生成 `syntaxes/autolisp.tmLanguage.json`）→ `merge-snippets.js` → esbuild 压缩。
 
-Each package in `packages/` must contain a `pkg.lsp` file at its root (the package definition).
+入口文件：`src/extension.ts`，输出：`dist/main.js`。
 
-### Function library conventions (`lib/src/`)
-- One function per `.lsp` file
-- File location under `src/` determines function namespace: e.g. `src/color/rgb2truecolor.lsp` → function `color:rgb2truecolor`
-- Function definition format (for doc generation):
+### 语言 ID
+- `autolisp` — `.lsp`、`.mnl` 文件
+- `autolispdcl` — `.dcl` 文件
+
+### 测试
+`package.json` 中未配置测试运行器。`devDependencies` 包含 mocha、chai、ts-node、nyc，但无测试脚本或测试文件。
+
+## @lisp 包规范
+
+每个 `packages/` 下的包根目录必须有 `pkg.lsp` 文件（包定义）。
+
+### 函数库规范（`lib/src/`）
+- 每个 `.lsp` 文件一个函数
+- 文件在 `src/` 下的路径决定函数命名空间：如 `src/color/rgb2truecolor.lsp` → 函数 `color:rgb2truecolor`
+- 函数定义格式（用于文档生成）：
 ```lisp
 (defun block:insert (para)
   "函数功能说明"
   "返回值类型"
   "示例代码"
-  ;; implementation
+  ;; 实现
 )
 ```
 
-## Encoding
-All LSP source files use **UTF-8** encoding. Using GB2312/ANSI causes bracket mismatch issues in the CAD environment.
+## 编码
+所有 LSP 源文件使用 **UTF-8** 编码。使用 GB2312/ANSI 会导致 CAD 环境下括号匹配错误。
 
-## CAD Compatibility
-@lisp targets: AutoCAD 2006+, GstarCAD 2015+, ZWCAD 2015+, BricsCAD, and other VLISP-compatible CAD platforms.
+## CAD 兼容性
+@lisp 支持：AutoCAD 2006+、GstarCAD 2015+、ZWCAD 2015+、BricsCAD 等 VLISP 兼容的 CAD 平台。
