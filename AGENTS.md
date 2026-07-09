@@ -2,21 +2,29 @@
 
 ## 仓库结构
 
-根仓库包含 **4 个 git 子模块** + kernel（独立仓库）+ 私有目录。
+根仓库是 monorepo，包含多个独立子项目（各有 `AGENTS.md`）。
 
-### 子模块（已初始化）
-- `packages/` — ~75 个应用包 (gitee.com/atlisp/packages)
-- `lib/` — 函数库，`src/` 目录下每个 `.lsp` 文件一个函数
-- `docs/` — 文档
-- `vscode/` — VSCode 扩展源码
+### Git 子模块
+| 路径 | 说明 |
+|------|------|
+| `packages/` | 75+ AutoLISP 应用包 |
+| `lib/` | AutoLISP 函数库，`src/` 下每文件一函数 |
+| `docs/` | 文档 |
+| `vscode/` | VSCode 扩展源码 |
 
-### 顶层目录
-- `kernel/` — @lisp CAD 客户端内核（独立 git 仓库）
-- `packages/` — **子模块**；应用包
-- `lib/` — **子模块**；函数库
-- `docs/` — **子模块**；文档
-- `vscode/` — **子模块**；VSCode 扩展
-- `pattern/` — CAD 填充图案 `.pat` 文件（约 1800 个）
+### 本仓库子项目
+| 路径 | 说明 | 构建 | 测试 |
+|------|------|------|------|
+| `mcp-server/` | MCP 服务器（AI↔CAD 桥接） | `npm run build` | `npm test` (vitest) |
+| `agent/` | 多智能体系统 (LangGraph) | `npm run build` | `npm test` (vitest) |
+| `atlisp-lint/` | AutoLISP 静态分析器 | `tsc` | `npm test` (jest) |
+| `parser/` | S 表达式解析器 | `tsc` | `npm test` (vitest) |
+| `server/` | Web 后端 (Common Lisp/SBCL) | `make all` | `make test` (FiveAM) |
+| `vscode/` | VSCode 扩展（子模块） | `npm run esbuild` | `npm run test-compile` |
+
+### 其他目录
+- `kernel/` — CAD 客户端内核（独立 git 仓库）
+- `pattern/` — ~1800 个 CAD 填充图案 `.pat` 文件
 - `private-packages/` — 私有/非分发包
 
 ## 常用脚本
@@ -44,7 +52,7 @@ git submodule foreach git pull
 
 ## VSCode 扩展开发
 
-唯一需要构建的是 `vscode/` 子目录。
+唯一需要构建的是 `vscode/` 子目录。其他 TypeScript 子项目（mcp-server、agent、atlisp-lint、parser）在各自目录下构建。
 
 ### 构建命令（在 vscode/ 目录下运行）
 ```sh
@@ -52,7 +60,7 @@ npm install              # 安装依赖
 npm run esbuild          # 开发构建（带 sourcemap）-> dist/main.js
 npm run esbuild-watch    # 监听模式
 npm run vscode:prepublish # 生产构建（压缩，执行预构建工具）
-npm run test-compile     # TypeScript 编译检查（无测试运行器）
+npm run test-compile     # TypeScript 编译检查
 ```
 
 ### 构建流程
@@ -63,9 +71,6 @@ npm run test-compile     # TypeScript 编译检查（无测试运行器）
 ### 语言 ID
 - `autolisp` — `.lsp`、`.mnl` 文件
 - `autolispdcl` — `.dcl` 文件
-
-### 测试
-`package.json` 中未配置测试运行器。`devDependencies` 包含 mocha、chai、ts-node、nyc，但无测试脚本或测试文件。
 
 ## @lisp 包规范
 
