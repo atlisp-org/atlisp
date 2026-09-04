@@ -1,0 +1,110 @@
+# @lisp CAD应用云管理系统 - Gitee CI配置
+# 自动化构建、测试和部署
+
+stages:
+  - check
+  - build
+  - deploy
+
+variables:
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.13"
+
+# 代码检查阶段
+lint-check:
+  stage: check
+  image: node:${NODE_VERSION}
+  before_script:
+    - cd atlisp-lint && npm install
+  script:
+    - cd ../lib && ../atlisp-lint/bin/atlisp-lint --src src
+    - cd ../packages && ../atlisp-lint/bin/atlisp-lint --src .
+  only:
+    - merge_requests
+    - main
+    - master
+
+# 包规范检查
+package-check:
+  stage: check
+  image: alpine:latest
+  script:
+    - |
+      for pkg in packages/*/; do
+        if [ ! -f "$pkg/pkg.lsp" ]; then
+          echo "错误: $pkg 缺少 pkg.lsp"
+          exit 1
+        fi
+      done
+    - echo "所有包规范检查通过"
+  only:
+    - merge_requests
+    - main
+    - master
+
+# 编码检查
+encoding-check:
+  stage: check
+  image: alpine:latest
+  script:
+    - |
+      for file in $(find . -name "*.lsp" -not -path "*/node_modules/*"); do
+        if file "$file" | grep -q "GB2312\|ANSI"; then
+          echo "错误: $file 不是UTF-8编码"
+          exit 1
+        fi
+      done
+    - echo "编码检查通过"
+  only:
+    - merge_requests
+    - main
+    - master
+
+# 构建VSCode扩展
+build-vscode:
+  stage: build
+  image: node:${NODE_VERSION}
+  before_script:
+    - cd vscode && npm install
+  script:
+    - npm run esbuild
+    - npm run test-compile
+  artifacts:
+    paths:
+      - vscode/dist/
+    expire_in: 1 week
+  only:
+    - main
+    - master
+    - tags
+
+# 生成文档
+generate-docs:
+  stage: build
+  image: python:${PYTHON_VERSION}
+  script:
+    - cd lib && python3 generate_manifest.py
+  artifacts:
+    paths:
+      - lib/functions.json
+    expire_in: 1 week
+  only:
+    - main
+    - master
+
+# 部署VSCode扩展（仅标签触发）
+deploy-vscode:
+  stage: deploy
+  image: node:${NODE_VERSION}
+  before_script:
+    - cd vscode && npm install
+  script:
+    - npm run vscode:prepublish
+    - npx vsce package
+  artifacts:
+    paths:
+      - vscode/*.vsix
+    expire_in: 30 days
+  only:
+    - tags
+  when: manual

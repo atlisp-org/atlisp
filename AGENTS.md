@@ -1,96 +1,204 @@
 # @lisp CAD应用云管理系统 — Agent Instructions
 
+## 项目概述
+
+@lisp 是一个 CAD 应用云管理系统，包含：
+- **函数库** (lib) — 862 个 AutoLISP 函数
+- **应用包** (packages) — 78 个 CAD 应用
+- **内核** (kernel) — CAD 客户端内核
+- **VSCode 扩展** — 代码编辑器支持
+- **MCP 服务器** — AI 工具接口
+- **解析器** (parser) — LSP 代码解析
+
 ## 仓库结构
 
-根仓库是 monorepo，包含多个独立子项目（各有 `AGENTS.md`）。
+根仓库包含 **4 个 git 子模块** + 8 个独立项目。
 
-### Git 子模块
-| 路径 | 说明 |
-|------|------|
-| `packages/` | 75+ AutoLISP 应用包 |
-| `lib/` | AutoLISP 函数库，`src/` 下每文件一函数 |
-| `docs/` | 文档 |
-| `vscode/` | VSCode 扩展源码 |
+### 子模块（4个）
+- `packages/` — 78 个应用包 (gitee.com/atlisp/packages)
+- `lib/` — 函数库，862 个函数
+- `docs/` — 文档
+- `vscode/` — VSCode 扩展源码
 
-### 本仓库子项目
-| 路径 | 说明 | 构建 | 测试 |
-|------|------|------|------|
-| `mcp-server/` | MCP 服务器（AI↔CAD 桥接） | `npm run build` | `npm test` (vitest) |
-| `agent/` | 多智能体系统 (LangGraph) | `npm run build` | `npm test` (vitest) |
-| `atlisp-lint/` | AutoLISP 静态分析器 | `tsc` | `npm test` (jest) |
-| `parser/` | S 表达式解析器 | `tsc` | `npm test` (vitest) |
-| `server/` | Web 后端 (Common Lisp/SBCL) | `make all` | `make test` (FiveAM) |
-| `vscode/` | VSCode 扩展（子模块） | `npm run esbuild` | `npm run test-compile` |
+### 独立项目（8个）
+- `kernel/` — CAD 客户端内核
+- `mcp-server/` — MCP 服务器
+- `agent/` — AI 代理
+- `parser/` — LSP 解析器
+- `server/` — 后端服务器
+- `atlispcc/` — 编译器
+- `atlisp-lint/` — 代码检查工具
+- `private-packages/` — 私有包
 
-### 其他目录
-- `kernel/` — CAD 客户端内核（独立 git 仓库）
-- `pattern/` — ~1800 个 CAD 填充图案 `.pat` 文件
-- `private-packages/` — 私有/非分发包
+## 工作职责
 
-## 常用脚本
+### 你的核心任务
+1. **代码维护** — 修复 bug、优化代码、重构
+2. **功能开发** — 添加新函数、新包、新功能
+3. **质量检查** — 代码审查、测试、文档
+4. **项目管理** — 同步、发布、版本管理
 
-### 同步所有子模块
-```sh
-./sync-all.sh
-# 或手动执行（必须在 ~/atlisp 目录运行，因为脚本硬编码了路径）
-cd ~/atlisp
-git submodule sync --recursive
-git submodule update --init --recursive
-git submodule foreach git checkout main
-git submodule foreach git pull
+### 工作原则
+- **安全第一** — 不泄露敏感信息（token、密码）
+- **质量优先** — 代码必须通过 lint 检查
+- **文档同步** — 代码变更必须更新文档
+- **测试覆盖** — 新功能必须有测试
+
+## 常用命令
+
+### 项目管理
+```bash
+make sync              # 同步所有项目
+make sync-projects     # 同步独立项目
+make status            # 查看项目状态
+make status-projects   # 查看独立项目状态
 ```
 
-### 推送 packages 包更改
-```sh
-./push-pkg.sh <包名> "提交信息"
+### 代码质量
+```bash
+make lint              # 检查 lib 和 packages
+make lint-projects     # 检查独立项目
+make lint-fix          # 自动修复问题
+make lint-staged       # 检查暂存区
 ```
 
-### 配置 Git 用户
-```sh
-./config-git.sh "用户名" "邮箱"
+### 包管理
+```bash
+make packages-list     # 列出所有包
+make packages-check    # 检查包规范
+./push-pkg.sh <包名> "提交信息"  # 推送包
 ```
 
-## VSCode 扩展开发
-
-唯一需要构建的是 `vscode/` 子目录。其他 TypeScript 子项目（mcp-server、agent、atlisp-lint、parser）在各自目录下构建。
-
-### 构建命令（在 vscode/ 目录下运行）
-```sh
-npm install              # 安装依赖
-npm run esbuild          # 开发构建（带 sourcemap）-> dist/main.js
-npm run esbuild-watch    # 监听模式
-npm run vscode:prepublish # 生产构建（压缩，执行预构建工具）
-npm run test-compile     # TypeScript 编译检查
+### 文档和建议
+```bash
+make suggestions       # 生成开发建议
+make suggestions-latest # 查看最新建议
+make docs              # 生成文档
 ```
 
-### 构建流程
-`vscode:prepublish` 执行：`tools/pre-build.js`（从 snippet keys 生成 `syntaxes/autolisp.tmLanguage.json`）→ `merge-snippets.js` → esbuild 压缩。
+## 代码规范
 
-入口文件：`src/extension.ts`，输出：`dist/main.js`。
-
-### 语言 ID
-- `autolisp` — `.lsp`、`.mnl` 文件
-- `autolispdcl` — `.dcl` 文件
-
-## @lisp 包规范
-
-每个 `packages/` 下的包根目录必须有 `pkg.lsp` 文件（包定义）。
-
-### 函数库规范（`lib/src/`）
-- 每个 `.lsp` 文件一个函数
-- 文件在 `src/` 下的路径决定函数命名空间：如 `src/color/rgb2truecolor.lsp` → 函数 `color:rgb2truecolor`
-- 函数定义格式（用于文档生成）：
+### LSP 文件规范
 ```lisp
-(defun block:insert (para)
+(defun namespace:function-name (param1 param2)
   "功能说明"
   "返回值类型"
   "示例代码"
-  ;; 实现
+  ;; 实现代码
 )
 ```
 
-## 编码
-所有 LSP 源文件使用 **UTF-8** 编码。使用 GB2312/ANSI 会导致 CAD 环境下括号匹配错误。
+### 命名规范
+- 函数名：`namespace:function-name`
+- 命名空间：与目录名一致
+- 变量名：使用 `-` 分隔，全局变量用 `*...*`
 
-## CAD 兼容性
-@lisp 支持：AutoCAD 2006+、GstarCAD 2015+、ZWCAD 2015+、BricsCAD 等 VLISP 兼容的 CAD 平台。
+### 文件编码
+- 所有 `.lsp` 文件必须使用 **UTF-8** 编码
+- 不要使用 GB2312/ANSI
+
+## 质量标准
+
+### 代码检查项
+- [ ] 括号匹配
+- [ ] 行长度 ≤ 100 字符
+- [ ] 无尾部空格
+- [ ] 函数有文档注释
+- [ ] 变量已声明
+
+### 测试要求
+- 新函数必须有测试
+- 测试文件放在 `lib/test/` 目录
+- 测试命名与函数名一致
+
+### 文档要求
+- 函数必须有 docstring
+- 包必须有 README
+- 重要变更必须更新 CHANGELOG
+
+## 任务模板
+
+### 任务1：修复 Bug
+```
+1. 理解问题：阅读 bug 描述，定位问题代码
+2. 分析原因：找出根本原因
+3. 制定方案：设计修复方案
+4. 实施修复：编写代码
+5. 验证测试：运行测试确保修复
+6. 提交代码：使用 push-pkg.sh 推送
+```
+
+### 任务2：添加新函数
+```
+1. 需求分析：理解功能需求
+2. 设计接口：确定函数签名
+3. 实现代码：编写函数体
+4. 编写测试：添加测试用例
+5. 更新文档：添加 docstring
+6. 代码检查：运行 lint
+```
+
+### 任务3：创建新包
+```
+1. 创建目录：packages/<包名>/
+2. 创建 pkg.lsp：包定义文件
+3. 编写功能：实现核心函数
+4. 添加 README：使用说明
+5. 检查规范：运行 packages-check
+6. 推送发布：使用 push-pkg.sh
+```
+
+## 错误处理
+
+### 常见问题
+| 问题 | 解决方案 |
+|------|----------|
+| lint 检查失败 | 运行 `make lint-fix` 自动修复 |
+| 同步失败 | 检查网络，手动执行 `git pull` |
+| 测试失败 | 检查测试环境，修复代码 |
+| 编码错误 | 转换为 UTF-8 编码 |
+
+### 错误报告
+遇到无法解决的问题时，记录：
+1. 错误信息
+2. 复现步骤
+3. 已尝试的方案
+4. 当前状态
+
+## 日志和报告
+
+### 日志位置
+- `logs/sync.log` — 同步日志
+- `logs/lint.log` — 代码检查日志
+- `logs/suggestions.log` — 建议生成日志
+
+### 报告位置
+- `reports/dev-suggestions-*.md` — 开发建议报告
+
+## 安全注意事项
+
+### 不要泄露
+- Token、密码、授权码
+- 私钥、证书
+- 内部 API 地址
+
+### 安全操作
+- 使用环境变量存储敏感信息
+- 不要在代码中硬编码密码
+- 定期更新授权码
+
+## 沟通规范
+
+### 状态汇报
+- 完成任务后汇报结果
+- 遇到问题及时反馈
+- 提供清晰的操作记录
+
+### 代码提交
+- 提交信息清晰明了
+- 包含变更原因和影响
+- 关联相关 issue
+
+---
+
+*此文档是你的工作手册，请仔细阅读并遵守。*

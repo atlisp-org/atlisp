@@ -1,0 +1,57 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "skills": {
+    "paths": [".opencode/skills"]
+  },
+  "references": {
+    "packages": {
+      "path": "packages",
+      "description": "73 个 AutoLISP 应用包，每个含 pkg.lsp 定义"
+    },
+    "lib": {
+      "path": "lib",
+      "description": "65 命名空间函数库，src/ 下每个 .lsp 文件一个函数"
+    },
+    "vscode": {
+      "path": "vscode",
+      "description": "VSCode 扩展源码 (TypeScript + esbuild)"
+    },
+    "kernel": {
+      "path": "kernel",
+      "description": "@lisp CAD 客户端内核 (独立 git 仓库)"
+    },
+    "agent": {
+      "path": "agent",
+      "description": "Agent 系统 (21 agents, 9 skills, JavaScript)"
+    },
+    "atlispcc": {
+      "path": "atlispcc",
+      "description": "FAS4 编译器套件 (Python) - .lsp ↔ .fas 编译/反编译"
+    },
+    "atlisp-lint": {
+      "path": "atlisp-lint",
+      "description": "AutoLISP Linter (Node.js/TypeScript)"
+    },
+    "atlisp-lsp": {
+      "path": "atlisp-lsp",
+      "description": "Language Server (Common Lisp/SBCL)"
+    },
+    "mcp-server": {
+      "path": "mcp-server",
+      "description": "MCP 服务器 330+ tools (Node.js) - AI Agent 操控 CAD"
+    },
+    "parser": {
+      "path": "parser",
+      "description": "S-expression parser (TypeScript) - @atlisp/parser"
+    },
+    "server": {
+      "path": "server",
+      "description": "@lisp Server (Common Lisp/SBCL) - REST/AI/WebSocket"
+    },
+    "private-packages": {
+      "path": "private-packages",
+      "description": "私有/非分发包 (for-ffsj, sd1t, tg306 等)"
+    }
+  }
+}
