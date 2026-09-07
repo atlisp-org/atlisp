@@ -3,7 +3,7 @@
 # 检查本地 vllm-cuda 服务是否就绪
 
 VLLM_URL="${VLLM_URL:-http://localhost:8001/v1}"
-VLLM_API_KEY="${VLLM_API_KEY:-REDACTED}"
+VLLM_API_KEY="${VLLM_API_KEY:?未设置 VLLM_API_KEY，请先 export VLLM_API_KEY=xxx}"
 TIMEOUT=5
 
 # 颜色输出
