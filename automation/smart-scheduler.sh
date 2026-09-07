@@ -3,7 +3,7 @@
 # @lisp 智能工作流调度器
 # 用法: ./smart-scheduler.sh [命令] [选项]
 
-set -e
+# No set -e: non-zero exit from individual commands must not kill the scheduler
 
 TARGET_DIR="${HOME}/atlisp"
 LOG_DIR="${TARGET_DIR}/logs"
@@ -151,38 +151,47 @@ execute_task() {
     return $result
 }
 
-# 执行任务队列
+# 执行任务队列 (snapshot queue first to avoid sed-i / read race)
 run_queue() {
     echo -e "${BLUE}开始执行任务队列...${NC}"
-    
+
     if [ ! -s "$QUEUE_FILE" ]; then
         echo -e "${YELLOW}任务队列为空${NC}"
         return 0
     fi
-    
-    while IFS=: read -r priority task_name dependencies; do
+
+    # Read entire queue into array first, so sed-i inside loop does not disrupt reading
+    local lines=()
+    while IFS= read -r line; do
+        lines+=("$line")
+    done < "$QUEUE_FILE"
+
+    local completed_names=()
+    for entry in "${lines[@]}"; do
+        IFS=: read -r priority task_name dependencies <<< "$entry"
         echo ""
         echo -e "${BLUE}--- 处理任务: ${task_name} (优先级: ${priority}) ---${NC}"
-        
-        # 检查依赖
+
         if ! check_dependencies "$dependencies"; then
             echo -e "${YELLOW}跳过任务 ${task_name} (依赖未满足)${NC}"
             continue
         fi
-        
-        # 执行任务
-        execute_task "$task_name"
-        
-        # 如果任务失败，记录并继续
-        if [ $? -ne 0 ]; then
-            echo "$(date): 任务 ${task_name} 失败" >> "$ALERT_FILE"
+
+        local rc=0
+        execute_task "$task_name" || rc=$?
+
+        if [ $rc -ne 0 ]; then
+            echo "$(date): 任务 ${task_name} 失败 (exit $rc)" >> "$ALERT_FILE"
         fi
-        
-        # 从队列中移除已完成的任务
-        sed -i "/:${task_name}:/d" "$QUEUE_FILE"
-        
-    done < "$QUEUE_FILE"
-    
+
+        completed_names+=("$task_name")
+    done
+
+    # Remove completed tasks from queue (batch to minimize I/O)
+    for name in "${completed_names[@]}"; do
+        sed -i "/:${name}:/d" "$QUEUE_FILE"
+    done
+
     echo ""
     echo -e "${GREEN}任务队列执行完成${NC}"
 }

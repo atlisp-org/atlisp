@@ -47,21 +47,34 @@ install_fcron() {
     # 保留现有任务（排除旧的atlisp任务）
     fcrontab -l 2>/dev/null | grep -v "atlisp\|sync-all.sh\|make lint\|generate_manifest" > "$TEMP_FILE" || true
     
-    # 添加新的定时任务
+    # 添加新的定时任务（从晚上22:00开始自动工作）
     cat >> "$TEMP_FILE" << 'EOF'
 # @lisp CAD应用云管理系统 - 自动化维护任务
+# 从晚上22:00开始自动工作
 
-# 每天凌晨2点同步子模块和独立项目
-0 2 * * * cd /home/vitalgg/atlisp && ./sync-all.sh >> logs/sync.log 2>&1
+# 每天22:00 同步子模块和独立项目
+0 22 * * * cd /home/vitalgg/atlisp && ./sync-all.sh >> logs/sync.log 2>&1
 
-# 每周一凌晨3点运行代码检查（包括独立项目）
-0 3 * * 1 cd /home/vitalgg/atlisp && make lint lint-projects >> logs/lint.log 2>&1
+# 每天22:30 运行代码检查（包括独立项目）
+30 22 * * * cd /home/vitalgg/atlisp && make lint lint-projects >> logs/lint.log 2>&1
 
-# 每周五凌晨4点生成开发建议报告
-0 4 * * 5 cd /home/vitalgg/atlisp && ./generate-suggestions.sh >> logs/suggestions.log 2>&1
+# 每天23:00 生成开发建议报告
+0 23 * * * cd /home/vitalgg/atlisp && ./generate-suggestions.sh >> logs/suggestions.log 2>&1
 
-# 每月1号凌晨5点生成文档
-0 5 1 * * cd /home/vitalgg/atlisp && make docs >> logs/docs.log 2>&1
+# 每天23:30 代码优化和清理
+30 23 * * * cd /home/vitalgg/atlisp && make clean >> logs/clean.log 2>&1
+
+# 每天00:00 生成文档
+0 0 * * * cd /home/vitalgg/atlisp && make docs >> logs/docs.log 2>&1
+
+# 每天00:30 生成日报
+30 0 * * * cd /home/vitalgg/atlisp && ./generate-suggestions.sh --daily >> logs/daily.log 2>&1
+
+# 每周六01:00 完整检查和优化
+0 1 * * 6 cd /home/vitalgg/atlisp && make full-check >> logs/weekly.log 2>&1
+
+# 每月1号01:30 月度维护
+30 1 1 * * cd /home/vitalgg/atlisp && make clean && make docs >> logs/monthly.log 2>&1
 EOF
     
     # 安装新的fcron配置

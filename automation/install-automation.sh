@@ -20,7 +20,7 @@ cd "$TARGET_DIR"
 
 # 1. 设置脚本权限
 echo "1. 设置脚本权限..."
-chmod +x sync-all.sh push-pkg.sh setup-cron.sh handle-detached.sh
+chmod +x "$TARGET_DIR/sync-all.sh" "$TARGET_DIR/push-pkg.sh" "$TARGET_DIR/automation/setup-cron.sh" "$TARGET_DIR/handle-detached.sh"
 
 # 2. 安装Git钩子
 echo "2. 安装Git钩子..."
@@ -54,7 +54,7 @@ echo "5. 定时任务安装..."
 read -p "是否安装定时任务？(y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    ./setup-cron.sh --install
+    "$TARGET_DIR/automation/setup-cron.sh" --install
 else
     echo "跳过定时任务安装"
 fi
@@ -76,8 +76,8 @@ echo "  make status        - 查看项目状态"
 echo "  make all           - 运行所有检查"
 echo ""
 echo "定时任务:"
-echo "  ./setup-cron.sh --status  - 查看定时任务状态"
-echo "  ./setup-cron.sh --list    - 列出定时任务"
+echo "  ./automation/setup-cron.sh --status  - 查看定时任务状态"
+echo "  ./automation/setup-cron.sh --list    - 列出定时任务"
 echo ""
 echo "Git钩子:"
 echo "  pre-commit: 提交前自动检查代码"

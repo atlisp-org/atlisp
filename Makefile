@@ -158,18 +158,18 @@ packages-check:
 .PHONY: cron-install
 cron-install:
 	@echo "$(BLUE)安装fcron定时任务...$(NC)"
-	./setup-fcron.sh --install
+	./automation/setup-fcron.sh --install
 
 # 移除定时任务
 .PHONY: cron-remove
 cron-remove:
 	@echo "$(BLUE)移除fcron定时任务...$(NC)"
-	./setup-fcron.sh --remove
+	./automation/setup-fcron.sh --remove
 
 # 查看定时任务状态
 .PHONY: cron-status
 cron-status:
-	./setup-fcron.sh --status
+	./automation/setup-fcron.sh --status
 
 # 显示项目状态
 .PHONY: status
@@ -204,7 +204,7 @@ suggestions-latest:
 .PHONY: email-setup
 email-setup:
 	@echo "$(BLUE)配置邮件通知...$(NC)"
-	./setup-email.sh
+	./automation/setup-email.sh
 
 # 测试邮件发送
 .PHONY: email-test
@@ -265,54 +265,54 @@ dev-setup: lint-install
 .PHONY: smart-add
 smart-add:
 	@echo "$(BLUE)添加智能任务...$(NC)"
-	./smart-scheduler.sh add $(TASK) $(PRIORITY) $(DEPENDS)
+	./automation/smart-scheduler.sh add $(TASK) $(PRIORITY) $(DEPENDS)
 
 .PHONY: smart-run
 smart-run:
 	@echo "$(BLUE)执行智能任务队列...$(NC)"
-	./smart-scheduler.sh run
+	./automation/smart-scheduler.sh run
 
 .PHONY: smart-status
 smart-status:
-	./smart-scheduler.sh status
+	./automation/smart-scheduler.sh status
 
 .PHONY: smart-monitor
 smart-monitor:
-	./smart-scheduler.sh monitor
+	./automation/smart-scheduler.sh monitor
 
 .PHONY: smart-clear
 smart-clear:
-	./smart-scheduler.sh clear
+	./automation/smart-scheduler.sh clear
 
 .PHONY: smart-retry
 smart-retry:
-	./smart-scheduler.sh retry $(TASK)
+	./automation/smart-scheduler.sh retry $(TASK)
 
 # 快捷任务
 .PHONY: quick-sync
 quick-sync:
 	@echo "$(BLUE)快速同步...$(NC)"
-	./smart-scheduler.sh add sync 1
-	./smart-scheduler.sh run
+	./automation/smart-scheduler.sh add sync 1
+	./automation/smart-scheduler.sh run
 
 .PHONY: quick-lint
 quick-lint:
 	@echo "$(BLUE)快速检查...$(NC)"
-	./smart-scheduler.sh add lint 2 sync
-	./smart-scheduler.sh run
+	./automation/smart-scheduler.sh add lint 2 sync
+	./automation/smart-scheduler.sh run
 
 .PHONY: quick-test
 quick-test:
 	@echo "$(BLUE)快速测试...$(NC)"
-	./smart-scheduler.sh add test 3 lint
-	./smart-scheduler.sh run
+	./automation/smart-scheduler.sh add test 3 lint
+	./automation/smart-scheduler.sh run
 
 .PHONY: full-check
 full-check:
 	@echo "$(BLUE)完整检查...$(NC)"
-	./smart-scheduler.sh add sync 1
-	./smart-scheduler.sh add lint 2 sync
-	./smart-scheduler.sh add test 3 lint
-	./smart-scheduler.sh add docs 4 lint
-	./smart-scheduler.sh add suggestions 5 test,docs
-	./smart-scheduler.sh run
+	./automation/smart-scheduler.sh add sync 1
+	./automation/smart-scheduler.sh add lint 2 sync
+	./automation/smart-scheduler.sh add test 3 lint
+	./automation/smart-scheduler.sh add docs 4 lint
+	./automation/smart-scheduler.sh add suggestions 5 test,docs
+	./automation/smart-scheduler.sh run
