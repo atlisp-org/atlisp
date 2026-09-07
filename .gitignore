@@ -44,3 +44,24 @@ Thumbs.db
 .tmp/
 .vscode/
 packages-private/
+
+# 独立项目目录
+/agent/
+/atlisp-lint/
+/atlispcc/
+/mcp-server/
+/parser/
+/server/
+/web/
+
+# 运行时文件
+/status.json
+/tasks/
+/logs/
+/plans/
+/reports/
+/graphify-out/
+/web-approval.py
+
+# opencode 数据库
+.opencode/
