@@ -13,7 +13,6 @@ APPROVED_DIR="$PLANS_DIR/approved"
 ARCHIVE_DIR="$PLANS_DIR/archive"
 PID_FILE="/tmp/atlisp-worker.pid"
 LOCK_FILE="/tmp/atlisp-worker.lock"
-TASK_ID_FILE="/tmp/atlisp-task-id"
 WATCH_PID_FILE="/tmp/atlisp-worker-watch.pid"
 
 # vllm service configuration
@@ -57,7 +56,7 @@ reap_work() { reap_pids WORK_PIDS; }
 # ---- Logging ----
 log_info()  { echo "[INFO]  $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_DIR/worker.log"; }
 log_warn()  { echo "[WARN]  $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_DIR/worker.log"; }
-log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_DIR/worker.log" >&2; }
+log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG_DIR/worker.log" >&2; }
 
 rotate_log() {
     local log_file="$LOG_DIR/worker.log"
@@ -85,10 +84,10 @@ send_notification() {
         --arg h "$(hostname)" \
         --arg ts "$(date -Iseconds)" \
         '{title:$t, message:$m, level:$l, timestamp:$ts, hostname:$h, service:"atlisp-worker"}')
-    curl -s -X POST "$WEBHOOK_URL" \
-         -H "Content-Type: application/json" \
-         -d "$payload" \
-         > /dev/null 2>&1 &
+    curl -s --max-time 10 -X POST "$WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        > /dev/null 2>&1 9>&- &
 }
 
 # ---- vllm service check ----
@@ -124,6 +123,7 @@ init() {
     fi
 
     echo $$ > "$PID_FILE"
+    rm -f "$LOG_DIR"/oc-*.pid
     log_info "Service started (PID: $$)"
 
     if [ -f "$WATCH_PID_FILE" ]; then
@@ -149,6 +149,23 @@ init() {
 # ---- Cleanup ----
 cleanup() {
     log_info "Service stopping"
+    local f oc
+    for f in "$LOG_DIR"/oc-*.pid; do
+        [ -e "$f" ] || continue
+        oc=$(cat "$f" 2>/dev/null)
+        if [ -n "$oc" ]; then
+            kill -TERM -- "-$oc" 2>/dev/null || true
+        fi
+    done
+    sleep 2
+    for f in "$LOG_DIR"/oc-*.pid; do
+        [ -e "$f" ] || continue
+        oc=$(cat "$f" 2>/dev/null)
+        if [ -n "$oc" ]; then
+            kill -KILL -- "-$oc" 2>/dev/null || true
+        fi
+    done
+    rm -f "$LOG_DIR"/oc-*.pid
     if [ -n "$WATCH_PID" ] && kill -0 "$WATCH_PID" 2>/dev/null; then
         pkill -TERM -P "$WATCH_PID" 2>/dev/null || true
         kill -TERM "$WATCH_PID" 2>/dev/null || true
@@ -156,7 +173,8 @@ cleanup() {
     rm -f "$WATCH_PID_FILE"
     local pid
     for pid in "${AI_PIDS[@]}" "${WORK_PIDS[@]}"; do
-        kill -TERM -- "-$pid" 2>/dev/null || true
+        pkill -TERM -P "$pid" 2>/dev/null || true
+        kill -TERM "$pid" 2>/dev/null || true
     done
     rm -f "$PID_FILE"
     exit 0
@@ -206,7 +224,8 @@ create_task() {
     escaped_name=$(printf '%s' "$name" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
     escaped_data=$(printf '%s' "$data" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
 
-    cat > "$task_file" <<EOF
+    local task_tmp="${task_file}.tmp.$$"
+    cat > "$task_tmp" <<EOF
 {
     "id": "$task_id",
     "name": "$escaped_name",
@@ -217,6 +236,7 @@ create_task() {
     "created": "$(date -Iseconds)"
 }
 EOF
+    mv "$task_tmp" "$task_file"
 
     log_info "Created task: $name ($task_id)"
 }
@@ -275,8 +295,9 @@ call_opencode() {
     out_file=$(mktemp "$LOG_DIR/opencode-out-XXXXXX")
     start_ts=$(date +%s)
 
-    setsid opencode run "$prompt" --auto --pure > "$out_file" 2>&1 &
+    setsid timeout "$AI_TASK_TIMEOUT" opencode run "$prompt" --auto --pure > "$out_file" 2>&1 9>&- &
     opencode_pid=$!
+    echo "$opencode_pid" > "$LOG_DIR/oc-$opencode_pid.pid"
 
     while kill -0 "$opencode_pid" 2>/dev/null; do
         local elapsed=$(( $(date +%s) - start_ts ))
@@ -302,6 +323,8 @@ call_opencode() {
 
     if [ "$rc" -eq 124 ]; then
         log_error "AI task killed (timeout)"
+    elif [ "$rc" -eq 143 ]; then
+        log_info "AI task stopped (service shutdown)"
     elif [ "$rc" -ne 0 ]; then
         log_error "opencode exited abnormally (exit code $rc)"
     else
@@ -312,6 +335,7 @@ call_opencode() {
         echo "$result" > "$LOG_DIR/opencode-$task_id.log"
     fi
 
+    rm -f "$LOG_DIR/oc-$opencode_pid.pid"
     return "${rc:-0}"
 }
 
@@ -344,7 +368,11 @@ execute_task() {
             cd "$WORK_DIR" && make lint >> "$LOG_DIR/lint.log" 2>&1 || exit_code=$?
             ;;
         "optimize")
-            cd "$WORK_DIR" && "$WORK_DIR/automation/optimize-code.sh" $task_data >> "$LOG_DIR/optimize.log" 2>&1 || exit_code=$?
+            if [ -n "$task_data" ]; then
+                cd "$WORK_DIR" && "$WORK_DIR/automation/optimize-code.sh" "$task_data" >> "$LOG_DIR/optimize.log" 2>&1 || exit_code=$?
+            else
+                cd "$WORK_DIR" && "$WORK_DIR/automation/optimize-code.sh" >> "$LOG_DIR/optimize.log" 2>&1 || exit_code=$?
+            fi
             ;;
         "generate")
             cd "$WORK_DIR" && "$WORK_DIR/generate-suggestions.sh" >> "$LOG_DIR/suggestions.log" 2>&1 || exit_code=$?
@@ -410,8 +438,7 @@ EOFPLAN
             call_opencode "请为 $task_data 生成完整的单元测试用例" "$task_id" || exit_code=$?
             ;;
         "ai-daily")
-            local today done_tasks
-            today=$(date +%Y-%m-%d)
+            local done_tasks
             done_tasks=$(ls -1 "$WORK_DIR/tasks/done/" 2>/dev/null | wc -l)
             call_opencode "请根据今天的任务执行情况(${done_tasks}个任务完成)，生成日报总结" "$task_id" || exit_code=$?
             ;;
@@ -468,11 +495,17 @@ EOFPLAN
     [ $exit_code -ne 0 ] && status="failed"
 
     local retry_count
-    retry_count=$(jq -r '.retry_count // 0' "$work_file" 2>/dev/null || echo 0)
+    retry_count=$(jq -r '.retry_count // 0' "$work_file" 2>/dev/null)
+    [[ "$retry_count" =~ ^[0-9]+$ ]] || retry_count=0
     if [ "$status" = "failed" ] && [ "$retry_count" -lt "$MAX_RETRY" ]; then
         retry_count=$((retry_count + 1))
-        jq ".retry_count = $retry_count | .status = \"pending\" | .last_error = \"exit code $exit_code\"" \
-            "$work_file" > "$work_file.tmp" && mv "$work_file.tmp" "$work_file"
+        if jq ".retry_count = $retry_count | .status = \"pending\" | .last_error = \"exit code $exit_code\"" \
+            "$work_file" > "$work_file.tmp" 2>/dev/null; then
+            mv "$work_file.tmp" "$work_file"
+        else
+            rm -f "$work_file.tmp"
+            log_warn "Failed to update retry metadata, requeueing task as-is: $task_name"
+        fi
         mv "$work_file" "$WORK_DIR/tasks/$task_id.task"
         log_error "Task failed, retrying ($retry_count/$MAX_RETRY): $task_name"
         return 1
@@ -480,8 +513,13 @@ EOFPLAN
 
     local completed_time
     completed_time=$(date -Iseconds)
-    jq ".status = \"$status\" | .duration = $duration | .exit_code = $exit_code | .completed = \"$completed_time\" | .retry_count = $retry_count" \
-        "$work_file" > "$work_file.tmp" && mv "$work_file.tmp" "$work_file"
+    if jq ".status = \"$status\" | .duration = $duration | .exit_code = $exit_code | .completed = \"$completed_time\" | .retry_count = $retry_count" \
+        "$work_file" > "$work_file.tmp" 2>/dev/null; then
+        mv "$work_file.tmp" "$work_file"
+    else
+        rm -f "$work_file.tmp"
+        log_warn "Failed to update task metadata, archiving without status: $task_name"
+    fi
 
     mv "$work_file" "$WORK_DIR/tasks/done/$task_id.task"
 
@@ -527,28 +565,46 @@ watch_files() {
         rm -f "$WATCH_PID_FILE"
     fi
 
-    (
-        inotifywait -m -r -e modify,create,delete \
-            --format '%w%f' \
-            "$WORK_DIR/lib" "$WORK_DIR/packages" "$WORK_DIR/kernel" 2>/dev/null |
-        while IFS= read -r file; do
-            case "$file" in
-                *.lsp|*.md) on_file_change "$file" ;;
-            esac
-        done
-    ) &
+    if command -v inotifywait > /dev/null 2>&1; then
+        (
+            inotifywait -m -r -e modify,create,delete \
+                --format '%w%f' \
+                "$WORK_DIR/lib" "$WORK_DIR/packages" "$WORK_DIR/kernel" 2>/dev/null |
+            while IFS= read -r file; do
+                case "$file" in
+                    *.lsp|*.md) on_file_change "$file" ;;
+                esac
+            done
+        ) 9>&- &
+        log_info "File watcher started (inotify, PID: $!)"
+    else
+        log_warn "inotifywait not found, falling back to polling watcher"
+        (
+            marker="$LOG_DIR/watch-marker"
+            touch "$marker"
+            while true; do
+                while IFS= read -r file; do
+                    on_file_change "$file"
+                done < <(find "$WORK_DIR/lib" "$WORK_DIR/packages" "$WORK_DIR/kernel" \
+                    \( -name '*.lsp' -o -name '*.md' \) -type f -newer "$marker" \
+                    2>/dev/null)
+                touch "$marker"
+                sleep 30
+            done
+        ) 9>&- &
+        log_info "File watcher started (polling, PID: $!)"
+    fi
     WATCH_PID=$!
     echo "$WATCH_PID" > "$WATCH_PID_FILE"
-    log_info "File watcher started (PID: $WATCH_PID)"
 }
 
 # ---- Check scheduled tasks ----
 check_schedule() {
-    local hour minute day date
+    local hour minute day day_of_month
     hour=$(date +%H)
     minute=$(date +%-M)
     day=$(date +%u)
-    date=$(date +%d)
+    day_of_month=$(date +%d)
 
     if [ "$hour" = "22" ] && [ "$minute" = "0" ]; then
         create_task "Daily sync" "sync" 1
@@ -568,7 +624,7 @@ check_schedule() {
     if [ "$day" = "6" ] && [ "$hour" = "1" ] && [ "$minute" = "0" ]; then
         create_task "Weekly full check" "full-check" 1
     fi
-    if [ "$date" = "01" ] && [ "$hour" = "2" ] && [ "$minute" = "0" ]; then
+    if [ "$day_of_month" = "01" ] && [ "$hour" = "2" ] && [ "$minute" = "0" ]; then
         create_task "Monthly maintenance" "full-check" 1
     fi
 }
@@ -706,8 +762,8 @@ check_code_quality() {
     lint_result=$(make lint 2>&1) || true
 
     local error_count warning_count
-    error_count=$(echo "$lint_result" | grep -c "错误\|error")
-    warning_count=$(echo "$lint_result" | grep -c "警告\|warning")
+    error_count=$(echo "$lint_result" | grep -oE '[0-9]+ 个错误|[0-9]+ error\(s\)' | grep -oE '^[0-9]+' | awk '{s+=$1} END {print s+0}')
+    warning_count=$(echo "$lint_result" | grep -oE '[0-9]+ 个警告|[0-9]+ warning\(s\)' | grep -oE '^[0-9]+' | awk '{s+=$1} END {print s+0}')
 
     log_info "Code check: $error_count errors, $warning_count warnings"
 
@@ -777,7 +833,7 @@ main_loop() {
                     if [ "${#AI_PIDS[@]}" -lt "$MAX_CONCURRENT" ]; then
                         local task_name
                         task_name=$(jq -r '.name' "$task_file" 2>/dev/null)
-                        ( execute_task "$task_file" ) &
+                        ( execute_task "$task_file" ) 9>&- &
                         AI_PIDS+=($!)
                         log_info "AI task submitted (${#AI_PIDS[@]}/$MAX_CONCURRENT): $task_name"
                     else
@@ -786,7 +842,7 @@ main_loop() {
                     ;;
                 *)
                     if [ "${#WORK_PIDS[@]}" -lt "$MAX_WORK_CONCURRENT" ]; then
-                        ( execute_task "$task_file" ) &
+                        ( execute_task "$task_file" ) 9>&- &
                         WORK_PIDS+=($!)
                         log_info "Work task submitted (${#WORK_PIDS[@]}/$MAX_WORK_CONCURRENT): $(jq -r '.name' "$task_file" 2>/dev/null)"
                     else
@@ -820,7 +876,8 @@ main_loop() {
         fi
         loop_count=$((loop_count + 1))
 
-        sleep 10
+        sleep 10 9>&- &
+        wait $!
     done
 }
 

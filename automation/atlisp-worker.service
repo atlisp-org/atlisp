@@ -1,22 +1,21 @@
 [Unit]
 Description=@lisp 自动化员工服务
-After=network.target vllm.service
+After=network-online.target vllm-cuda.service
 Wants=network-online.target
-Requires=vllm.service
-StartLimitIntervalSec=60
-StartLimitBurst=3
+StartLimitIntervalSec=300
+StartLimitBurst=6
 
 [Service]
 Type=simple
 User=vitalgg
 Group=vitalgg
 WorkingDirectory=/home/vitalgg/atlisp
-ExecStartPre=/home/vitalgg/atlisp/automation/check-vllm.sh wait 60 5
 ExecStart=/home/vitalgg/atlisp/automation/work-service.sh
 Restart=always
 RestartSec=10
 
 # 环境变量
+EnvironmentFile=-/etc/atlisp/atlisp-worker.env
 Environment=HOME=/home/vitalgg
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=VLLM_REQUIRED=true

@@ -65,3 +65,7 @@ packages-private/
 
 # opencode 数据库
 .opencode/
+
+# 独立工具/知识库数据（各自独立仓库或大体积运行时数据）
+/autolisp-set/
+/kb-semantic/

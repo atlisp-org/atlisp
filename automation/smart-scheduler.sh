@@ -116,7 +116,7 @@ execute_task() {
             cd "$TARGET_DIR" && make lint
             ;;
         "test")
-            cd "$TARGET_DIR" && make test
+            cd "$TARGET_DIR" && make quick-test
             ;;
         "docs")
             cd "$TARGET_DIR" && make docs
