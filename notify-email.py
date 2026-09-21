@@ -4,6 +4,7 @@
 使用163邮箱SMTP服务发送开发建议报告
 """
 
+import argparse
 import smtplib
 import os
 import sys
@@ -24,11 +25,15 @@ RECEIVER_EMAIL = "vitalgg@foxmail.com"
 REPORT_DIR = Path.home() / "atlisp" / "reports"
 
 
-def load_latest_report():
-    """加载最新的开发建议报告"""
+def load_report(report_path=None):
+    """加载报告：显式路径优先，否则取当天/最新的 dev-suggestions。"""
+    if report_path:
+        p = Path(report_path)
+        if p.exists():
+            return p.read_text(encoding='utf-8')
+        return None
     today = datetime.now().strftime("%Y%m%d")
     report_file = REPORT_DIR / f"dev-suggestions-{today}.md"
-    
     if not report_file.exists():
         # 查找最近的报告
         reports = sorted(REPORT_DIR.glob("dev-suggestions-*.md"), reverse=True)
@@ -36,17 +41,16 @@ def load_latest_report():
             report_file = reports[0]
         else:
             return None
-    
     with open(report_file, 'r', encoding='utf-8') as f:
         return f.read()
 
 
-def create_email_body(report_content):
+def create_email_body(report_content, title="@lisp 开发建议报告"):
     """创建邮件正文（HTML格式）"""
     # 将Markdown转换为简单的HTML
     html_content = report_content.replace('\n', '<br>')
     html_content = html_content.replace('# ', '<h1>').replace('<h1>', '<h1>', 1)
-    
+
     html = f"""
     <html>
     <head>
@@ -63,7 +67,7 @@ def create_email_body(report_content):
         </style>
     </head>
     <body>
-        <h1>@lisp 开发建议报告</h1>
+        <h1>{title}</h1>
         {html_content}
         <div class="footer">
             <p>此邮件由自动生成脚本发送</p>
@@ -107,26 +111,33 @@ def send_email(subject, html_content):
 
 def main():
     """主函数"""
+    ap = argparse.ArgumentParser(description="发送报告邮件")
+    ap.add_argument("--report", help="报告文件路径（默认：当天/最新的 dev-suggestions-*.md）")
+    ap.add_argument("--title", default="@lisp 开发建议报告", help="邮件标题（同时作为主题前缀）")
+    args = ap.parse_args()
+
     print("正在生成邮件...")
-    
+
     # 加载报告
-    report = load_latest_report()
+    report = load_report(args.report)
     if not report:
-        print("未找到开发建议报告")
-        return
-    
+        print(f"未找到报告: {args.report or 'dev-suggestions-*.md'}")
+        return 1
+
     # 创建邮件内容
-    html_content = create_email_body(report)
-    
+    html_content = create_email_body(report, args.title)
+
     # 发送邮件
     today = datetime.now().strftime("%Y-%m-%d")
-    subject = f"@lisp 开发建议报告 - {today}"
-    
+    subject = f"{args.title} - {today}"
+
     if send_email(subject, html_content):
         print("通知完成")
+        return 0
     else:
         print("通知失败，请检查邮箱配置")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

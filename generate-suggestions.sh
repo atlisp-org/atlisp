@@ -47,10 +47,22 @@ find "$REPORT_DIR" -maxdepth 1 -name 'dev-suggestions-*.md' ! -name '*history*' 
     echo "- [$date]($name)" >> "$HISTORY_FILE"
 done
 
-# 发送邮件通知
-if [ -f "${HOME}/.atlisp-email-config" ]; then
-    echo "发送邮件通知..."
-    source "${HOME}/.atlisp-email-config"
-    export EMAIL_PASSWORD
-    python3 "${TARGET_DIR}/notify-email.py" 2>/dev/null || echo "邮件发送失败"
+# 附：AI 建议对照（与 ai-suggestions 相互印证）
+# 注意：本报告不发送邮件；邮件通知由 ai-suggestions 任务负责（notify-email.py --report ...）
+AI_REPORT=$(ls -t "$REPORT_DIR"/ai-suggestions-*.md 2>/dev/null | head -1)
+if [ -n "$AI_REPORT" ] && [ -f "$AI_REPORT" ]; then
+    {
+        echo ""
+        echo "## 八、AI 建议对照（ai-suggestions）"
+        echo ""
+        echo "最新 AI 改进建议: \`$(basename "$AI_REPORT")\`（$(date -r "$AI_REPORT" '+%Y-%m-%d %H:%M')）"
+        echo ""
+        echo "> 两份报告互为印证：本报告用实测数据回答「哪里有 / 有多少问题」，"
+        echo "> AI 报告回答「可新增 / 扩展什么能力」。评审时对照阅读；"
+        echo "> 若 AI 建议涉及本报告的错误级问题或高频规则，优先修复。"
+        echo ""
+        echo "AI 报告章节概览："
+        grep -E '^#{1,3} ' "$AI_REPORT" 2>/dev/null | head -15 | sed 's/^/  - /'
+    } >> "$REPORT_FILE"
+    echo "已附加 AI 建议对照: $(basename "$AI_REPORT")"
 fi

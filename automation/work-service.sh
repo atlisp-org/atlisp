@@ -400,7 +400,42 @@ execute_task() {
             call_opencode "请优化 $task_data 的性能，包括：算法优化、内存优化、执行效率" "$task_id" || exit_code=$?
             ;;
         "ai-suggest")
-            call_opencode "请分析 $task_data 的代码，生成改进建议和优化方案" "$task_id" || exit_code=$?
+            local suggest_file dev_report
+            suggest_file="$WORK_DIR/reports/ai-suggestions-$(date +%Y%m%d).md"
+            dev_report="$WORK_DIR/reports/dev-suggestions-$(date +%Y%m%d).md"
+            mkdir -p "$WORK_DIR/reports"
+            call_opencode "请分析 $task_data 的现状（README/AGENTS.md/代码结构与已有能力），提出【改进型建议】，重点是【新功能与能力扩展】方向：
+1. 可新增的功能模块（面向 CAD 用户、@lisp 函数库/应用包、AI 与自动化能力等增量方向）
+2. 现有能力的增强点（使用体验、性能、覆盖面、兼容性）
+3. 与现有架构契合的扩展路径与落地步骤
+【相互印证（必做）】先阅读当天的实测报告 $dev_report（若不存在则取 reports/ 下最新的 dev-suggestions-*.md），
+以其量化结论（lint 问题数、测试覆盖、技术债、未提交变更）为依据；每条建议须引用该报告的对应指标或条目编号，
+不得与其矛盾；若实测报告指出的错误级问题影响某建议，请在该建议中标注依赖关系。
+要求：建议必须具体、可落地，结合项目现状说明理由；每条包含 —— 名称、价值/收益、实现要点、工作量（S/M/L）、优先级（高/中/低）。以 Markdown 清单输出，按优先级排序，避免泛泛而谈与纯代码风格类意见。
+最后必须：把完整报告写入文件 $suggest_file（Markdown，含标题与生成时间），并在回答末尾给出该文件路径。" "$task_id" || exit_code=$?
+            if [ ! -s "$suggest_file" ]; then
+                log_warn "AI 未写出报告文件，回退保存去 ANSI 的会话输出"
+                sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$suggest_file" 2>/dev/null || true
+            fi
+            if [ -s "$suggest_file" ]; then
+                log_info "AI 建议报告: $suggest_file"
+                # 邮件通知（本任务的职责；dev-suggestions 不再发邮件）
+                if [ -f "${HOME}/.atlisp-email-config" ]; then
+                    if (
+                        source "${HOME}/.atlisp-email-config"
+                        export EMAIL_PASSWORD
+                        python3 "$WORK_DIR/notify-email.py" --report "$suggest_file" --title "@lisp AI 改进建议"
+                    ) >> "$LOG_DIR/suggestions.log" 2>&1; then
+                        log_info "AI 建议报告邮件已发送"
+                    else
+                        log_warn "AI 建议报告邮件发送失败（见 logs/suggestions.log）"
+                    fi
+                else
+                    log_warn "未配置 ~/.atlisp-email-config，跳过邮件通知"
+                fi
+            else
+                log_error "AI 建议报告生成失败（无输出）"
+            fi
             ;;
         "ai-plan")
             plan_result=""
@@ -447,6 +482,28 @@ EOFPLAN
             ;;
         "ai-learn")
             call_opencode "请分析最近的代码变更和任务执行记录，总结经验教训，更新知识库" "$task_id" || exit_code=$?
+            ;;
+        "ai-article")
+            local art_pkg art_file
+            art_pkg="$task_data"
+            art_file="$WORK_DIR/docs/@lisp-article-$(date +%Y%m%d)-${art_pkg}.md"
+            mkdir -p "$WORK_DIR/docs"
+            call_opencode "你是面向 CAD 用户的 @lisp 推广作者。请以应用包【$art_pkg】为题材，写一篇推广/介绍文章。
+【素材】先阅读 ~/atlisp/packages/$art_pkg/ 下的文件（README.md、pkg.lsp、*.lsp、*.org 等），弄清它解决什么问题、提供哪些命令/功能、如何使用；示例必须来自真实内容。
+【角度】二选一（自行判断更合适者）：
+ (a) 面向 CAD 用户：使用介绍 —— 场景痛点 → 该包如何解决 → 具体命令与操作示例；
+ (b) 面向开发者：AutoLISP 开发介绍 —— 实现思路、关键函数、可复用技巧。
+【加分】若能自然结合 AI 能力（规范问答、代码生成、@lisp AI 助手等），请融入正文。
+【要求】中文，正文 1000~1500 字；结构清晰（标题 / 导语 / 小标题 / 示例代码 / 小结）；函数名与命令必须来自该包真实内容，禁止编造；避免夸大宣传与空话。
+最后必须：把文章写入文件 $art_file（Markdown，含标题、生成时间与所涉包名），并在回答末尾给出该文件路径。" "$task_id" || exit_code=$?
+            if [ -s "$art_file" ]; then
+                echo "$(date +%F) $art_pkg $art_file" >> "$ARTICLE_TOPIC_LOG"
+                log_info "AI 文章: $art_file"
+            else
+                # 不把噪声写进 docs/：失败输出另存 logs/
+                sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$LOG_DIR/article-failed-$task_id.md" 2>/dev/null || true
+                log_error "AI 文章生成失败（无输出），原始会话见 logs/article-failed-$task_id.md"
+            fi
             ;;
         "ai-monitor")
             call_opencode "请分析系统运行状态、任务执行情况，生成监控报告和优化建议" "$task_id" || exit_code=$?
@@ -704,6 +761,24 @@ process_approved_plans() {
     [ $plan_count -gt 0 ] && log_info "Processed $plan_count approved plans"
 }
 
+# ---- 文章题材选取（每日 05:00 文章任务）----
+ARTICLE_TOPIC_LOG="$WORK_DIR/logs/article-topics.log"
+
+pick_article_pkg() {
+    local all used cand
+    all=$(find "$WORK_DIR/packages" -mindepth 1 -maxdepth 1 -type d ! -name '.*' \
+          -exec basename {} \; 2>/dev/null | sort)
+    [ -z "$all" ] && return 0
+    # 近 60 条已用题材优先排除（候选不足时回退全量）
+    used=$(tail -60 "$ARTICLE_TOPIC_LOG" 2>/dev/null | awk '{print $2}' | sort -u)
+    cand="$all"
+    if [ -n "$used" ]; then
+        cand=$(comm -23 <(echo "$all") <(echo "$used"))
+        [ -z "$cand" ] && cand="$all"
+    fi
+    echo "$cand" | shuf -n 1
+}
+
 # ---- Daily AI tasks ----
 daily_ai_tasks() {
     local hour minute day
@@ -711,7 +786,7 @@ daily_ai_tasks() {
     minute=$(date +%-M)
     day=$(date +%u)
 
-    if [ "$hour" = "22" ] && [ "$minute" = "15" ]; then
+    if [ "$hour" = "03" ] && [ "$minute" = "0" ]; then
         create_task "AI suggestions" "ai-suggest" 3 "整个项目"
     fi
     if [ "$hour" = "22" ] && [ "$minute" = "45" ]; then
@@ -728,6 +803,15 @@ daily_ai_tasks() {
     fi
     if [ "$(date +%d)" = "01" ] && [ "$hour" = "2" ] && [ "$minute" = "15" ]; then
         create_task "AI monthly summary" "ai-learn" 3
+    fi
+    if [ "$hour" = "05" ] && [ "$minute" = "0" ]; then
+        local art_pkg
+        art_pkg=$(pick_article_pkg)
+        if [ -n "$art_pkg" ]; then
+            create_task "AI article: $art_pkg" "ai-article" 2 "$art_pkg"
+        else
+            log_warn "未找到可用应用包，跳过文章任务"
+        fi
     fi
 }
 
