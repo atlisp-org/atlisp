@@ -1,0 +1,24 @@
+{
+  "name": "graphify-viewer",
+  "version": "1.0.0",
+  "description": "High-performance WebGL graph viewer for graphify output (Sigma.js + graphology)",
+  "type": "module",
+  "scripts": {
+    "build:data": "node scripts/build_data.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite preview --port 4173 --host"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "graphology": "^0.26.0",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "sigma": "^3.0.3"
+  },
+  "devDependencies": {
+    "vite": "^7.1.7"
+  }
+}

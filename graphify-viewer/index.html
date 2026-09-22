@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>graphify viewer</title>
+</head>
+<body>
+  <div id="app">
+    <div id="graph"></div>
+
+    <aside id="sidebar">
+      <header>
+        <h1>graphify</h1>
+        <div id="stats" class="muted">loading…</div>
+      </header>
+
+      <section class="panel">
+        <input id="search" type="text" placeholder="Search nodes…" autocomplete="off" spellcheck="false" />
+        <div id="search-results"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Edge confidence</h2>
+        <label class="row"><input type="checkbox" data-conf="EXTRACTED" checked /> EXTRACTED</label>
+        <label class="row"><input type="checkbox" data-conf="INFERRED" checked /> INFERRED</label>
+        <label class="row"><input type="checkbox" data-conf="AMBIGUOUS" checked /> AMBIGUOUS</label>
+      </section>
+
+      <section class="panel grow">
+        <h2>Communities <span id="legend-count" class="muted"></span></h2>
+        <div id="legend"></div>
+      </section>
+
+      <section class="panel" id="info-panel">
+        <h2>Node info</h2>
+        <div id="info-content" class="muted">Click a node to inspect it</div>
+      </section>
+
+      <footer class="muted">
+        <button id="reset" type="button">Reset view</button>
+      </footer>
+    </aside>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
