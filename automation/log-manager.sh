@@ -71,13 +71,27 @@ rotate_log() {
 # 清理旧的日志轮转文件
 cleanup_old_logs() {
     local logfile=$1
-    
+    local target
+
     for i in $(seq $MAX_LOG_FILES 10); do
-        if [ -f "$logfile.$i.gz" ] || [ -f "$logfile.$i" ]; then
-            rm -f "$logfile.$i.gz" "$logfile.$i"
-            log_info "删除旧日志: $logfile.$i"
-        fi
+        for target in "$logfile.$i.gz" "$logfile.$i"; do
+            if [ -f "$target" ]; then
+                rm -f "$target"
+                log_info "删除旧轮转日志: $(basename "$target")"
+            fi
+        done
     done
+}
+
+# 列出所有日志基名（含仅剩轮转副本的日志，如 sync.log.6.gz 而 sync.log 已不存在）
+list_log_basenames() {
+    local f base
+    for f in "$LOG_DIR"/*.log "$LOG_DIR"/*.log.* "$LOG_DIR"/*.gz; do
+        [ -e "$f" ] || continue
+        base=${f%.gz}
+        base=$(printf '%s' "$base" | sed -E 's/\.[0-9]+$//')
+        printf '%s\n' "$base"
+    done | sort -u
 }
 
 # 清理 opencode 日志（保留最新的几个）
@@ -137,10 +151,10 @@ main() {
             ;;
         cleanup)
             log_info "开始日志清理..."
-            for f in "$LOG_DIR"/*.log; do
-                [ -f "$f" ] || continue
-                cleanup_old_logs "$f"
-            done
+            # 遍历所有日志基名（而非仅现存 *.log），确保孤儿轮转副本也被清理
+            while IFS= read -r base; do
+                cleanup_old_logs "$base"
+            done < <(list_log_basenames)
             cleanup_opencode_logs
             cleanup_old_tasks
             cleanup_task_temp
