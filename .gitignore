@@ -63,6 +63,10 @@ packages-private/
 /graphify-out/
 /web-approval.py
 
+# Python 缓存
+__pycache__/
+*.pyc
+
 # opencode 数据库
 .opencode/
 

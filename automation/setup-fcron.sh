@@ -12,7 +12,6 @@ set -e
 
 TARGET_DIR="${HOME}/atlisp"
 LOG_DIR="${TARGET_DIR}/logs"
-SYNC_SCRIPT="${TARGET_DIR}/sync-all.sh"
 
 # 创建日志目录
 mkdir -p "$LOG_DIR"

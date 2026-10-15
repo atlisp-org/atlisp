@@ -18,16 +18,19 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 检查 vllm 服务
 check_vllm() {
-    local response=$(curl -s -w "%{http_code}" -o /tmp/vllm-response.json \
-        --connect-timeout $TIMEOUT \
-        --max-time $TIMEOUT \
+    local body response http_code models
+    body=$(mktemp "${TMPDIR:-/tmp}/vllm-response-XXXXXX")
+    response=$(curl -s -w "%{http_code}" -o "$body" \
+        --connect-timeout "$TIMEOUT" \
+        --max-time "$TIMEOUT" \
         -H "Authorization: Bearer $VLLM_API_KEY" \
         "$VLLM_URL/models" 2>/dev/null)
     
-    local http_code=$response
+    http_code=$response
     
     if [ "$http_code" = "200" ]; then
-        local models=$(cat /tmp/vllm-response.json 2>/dev/null | jq -r '.data[].id' 2>/dev/null)
+        models=$(jq -r '.data[].id' "$body" 2>/dev/null)
+        rm -f "$body"
         if [ -n "$models" ]; then
             log_info "vllm 服务就绪"
             log_info "可用模型: $models"
@@ -37,9 +40,11 @@ check_vllm() {
             return 1
         fi
     elif [ "$http_code" = "000" ]; then
+        rm -f "$body"
         log_error "无法连接到 vllm 服务 ($VLLM_URL)"
         return 1
     else
+        rm -f "$body"
         log_error "vllm 服务返回错误: HTTP $http_code"
         return 1
     fi

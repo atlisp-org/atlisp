@@ -104,7 +104,8 @@ execute_task() {
     echo -e "${BLUE}执行任务: ${task_name}${NC}"
     
     # 记录开始时间
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s)
     
     # 执行任务
     local result=0
@@ -136,7 +137,8 @@ execute_task() {
     result=$?
     
     # 记录结束时间
-    local end_time=$(date +%s)
+    local end_time
+    end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
     # 更新状态
@@ -226,9 +228,10 @@ show_status() {
     
     echo ""
     echo -e "${YELLOW}统计:${NC}"
-    local total=$(wc -l < "$STATUS_FILE" 2>/dev/null || echo 0)
-    local completed=$(grep -c "completed" "$STATUS_FILE" 2>/dev/null || echo 0)
-    local failed=$(grep -c "failed" "$STATUS_FILE" 2>/dev/null || echo 0)
+    local total completed failed
+    total=$(wc -l < "$STATUS_FILE" 2>/dev/null || echo 0)
+    completed=$(grep -c "completed" "$STATUS_FILE" 2>/dev/null || echo 0)
+    failed=$(grep -c "failed" "$STATUS_FILE" 2>/dev/null || echo 0)
     
     echo "  总任务: ${total}"
     echo "  完成: ${completed}"
@@ -289,7 +292,7 @@ monitor() {
 
 # 清空任务队列
 clear_queue() {
-    > "$QUEUE_FILE"
+    : > "$QUEUE_FILE"
     echo -e "${GREEN}任务队列已清空${NC}"
 }
 

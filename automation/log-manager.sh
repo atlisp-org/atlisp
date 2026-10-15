@@ -9,10 +9,12 @@ LOG_DIR="$WORK_DIR/logs"
 TASKS_DIR="$WORK_DIR/tasks"
 
 # 配置
-MAX_LOG_SIZE=$((10 * 1024 * 1024))  # 10MB
-MAX_LOG_FILES=5                      # 保留5个轮转文件
-MAX_TASK_FILES=50                    # 保留50个任务文件
-MAX_OPENCOD_LOG_SIZE=$((5 * 1024 * 1024))  # 5MB
+MAX_LOG_SIZE=$((10 * 1024 * 1024))           # 10MB
+MAX_LOG_FILES=5                              # 保留5个轮转文件
+MAX_TASK_FILES=100                           # 保留100个任务文件（与 worker 主循环的保留量一致，
+                                             # 避免裁剪 self-review 的 24h 统计窗口）
+MAX_OPENCODE_LOGS=10                         # 保留最新10个 opencode-*.log
+TEMP_KEEP_DAYS=1                             # 遗留临时文件保留天数
 
 # 颜色输出
 RED='\033[0;31m'
@@ -38,7 +40,8 @@ rotate_log() {
         return 0
     fi
     
-    local size=$(stat -f%z "$logfile" 2>/dev/null || stat -c%s "$logfile" 2>/dev/null || echo 0)
+    local size
+    size=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo 0)
     
     if [ "$size" -gt "$max_size" ]; then
         log_info "轮转日志: $logfile ($(( size / 1024 ))KB)"
@@ -59,7 +62,7 @@ rotate_log() {
         fi
         
         # 清空当前文件
-        > "$logfile"
+        : > "$logfile"
         
         log_info "日志已轮转: $logfile.0.gz"
     fi
@@ -79,20 +82,22 @@ cleanup_old_logs() {
 
 # 清理 opencode 日志（保留最新的几个）
 cleanup_opencode_logs() {
-    local count=$(ls -1 "$LOG_DIR"/opencode-*.log 2>/dev/null | wc -l || echo 0)
+    local count
+    count=$(ls -1 "$LOG_DIR"/opencode-*.log 2>/dev/null | wc -l || echo 0)
     
-    if [ "$count" -gt 10 ]; then
-        ls -t "$LOG_DIR"/opencode-*.log | tail -n +11 | xargs rm -f
-        log_info "清理 opencode 日志: 保留最新10个"
+    if [ "$count" -gt "$MAX_OPENCODE_LOGS" ]; then
+        ls -t "$LOG_DIR"/opencode-*.log | tail -n +$((MAX_OPENCODE_LOGS + 1)) | xargs -r rm -f
+        log_info "清理 opencode 日志: 保留最新 $MAX_OPENCODE_LOGS 个"
     fi
 }
 
 # 清理旧任务文件
 cleanup_old_tasks() {
-    local done_count=$(ls -1 "$TASKS_DIR/done/"*.task 2>/dev/null | wc -l || echo 0)
+    local done_count
+    done_count=$(ls -1 "$TASKS_DIR/done/"*.task 2>/dev/null | wc -l || echo 0)
     
     if [ "$done_count" -gt "$MAX_TASK_FILES" ]; then
-        ls -t "$TASKS_DIR/done/"*.task | tail -n +$((MAX_TASK_FILES + 1)) | xargs rm -f
+        ls -t "$TASKS_DIR/done/"*.task | tail -n +$((MAX_TASK_FILES + 1)) | xargs -r rm -f
         log_info "清理旧任务: 保留最新 $MAX_TASK_FILES 个"
     fi
     
@@ -100,10 +105,23 @@ cleanup_old_tasks() {
     find "$TASKS_DIR/done/" -name "*.task" -size +100k -exec rm -f {} \; 2>/dev/null || true
 }
 
-# 清理 tasks 目录中的临时文件
+# 清理 tasks 目录中的孤儿临时文件。
+# 注意：绝不能删除 *.task / *.task.running —— 那是待执行与挂起任务，
+# 误删会静默丢任务（历史教训见 reports/self-review-*）。
 cleanup_task_temp() {
-    # 清理超过1天的任务文件
-    find "$TASKS_DIR/" -name "*.task" -mtime +1 -exec rm -f {} \; 2>/dev/null || true
+    find "$TASKS_DIR/" -maxdepth 1 \
+        \( -name '*.tmp' -o -name '*.tmp.*' -o -name '*.task.tmp*' \) \
+        -mtime "+$TEMP_KEEP_DAYS" -exec rm -f {} \; 2>/dev/null || true
+}
+
+# 清理 call_opencode 等留下的遗留临时文件（进程异常退出时未自清理）
+cleanup_leftover_temp() {
+    find "$LOG_DIR" -maxdepth 1 \
+        \( -name 'prompt-*' -o -name 'opencode-out-*' \) \
+        -mtime "+$TEMP_KEEP_DAYS" -exec rm -f {} \; 2>/dev/null || true
+    # 失败的文章草稿仅作排查用，保留 30 天
+    find "$LOG_DIR" -maxdepth 1 -name 'article-failed-*.md' \
+        -mtime +30 -exec rm -f {} \; 2>/dev/null || true
 }
 
 # 主函数
@@ -111,30 +129,22 @@ main() {
     case "${1:-cleanup}" in
         rotate)
             log_info "开始日志轮转..."
-            rotate_log "$LOG_DIR/sync.log"
-            rotate_log "$LOG_DIR/lint.log"
-            rotate_log "$LOG_DIR/optimize.log"
-            rotate_log "$LOG_DIR/suggestions.log"
-            rotate_log "$LOG_DIR/docs.log"
-            rotate_log "$LOG_DIR/full-check.log"
-            rotate_log "$LOG_DIR/clean.log"
-            rotate_log "$LOG_DIR/lint-check.log"
-            rotate_log "$LOG_DIR/worker.log"
+            # 轮转 logs/ 下所有日志（不再维护易漏项的硬编码清单）
+            for f in "$LOG_DIR"/*.log; do
+                [ -f "$f" ] || continue
+                rotate_log "$f"
+            done
             ;;
         cleanup)
             log_info "开始日志清理..."
-            cleanup_old_logs "$LOG_DIR/sync.log"
-            cleanup_old_logs "$LOG_DIR/lint.log"
-            cleanup_old_logs "$LOG_DIR/optimize.log"
-            cleanup_old_logs "$LOG_DIR/suggestions.log"
-            cleanup_old_logs "$LOG_DIR/docs.log"
-            cleanup_old_logs "$LOG_DIR/full-check.log"
-            cleanup_old_logs "$LOG_DIR/clean.log"
-            cleanup_old_logs "$LOG_DIR/lint-check.log"
-            cleanup_old_logs "$LOG_DIR/worker.log"
+            for f in "$LOG_DIR"/*.log; do
+                [ -f "$f" ] || continue
+                cleanup_old_logs "$f"
+            done
             cleanup_opencode_logs
             cleanup_old_tasks
             cleanup_task_temp
+            cleanup_leftover_temp
             ;;
         strip-ansi)
             log_info "清理 ANSI 颜色码..."
@@ -146,10 +156,22 @@ main() {
             ;;
         status)
             log_info "日志状态:"
+            local f sz
             echo "  日志文件:"
-            ls -lh "$LOG_DIR"/*.log 2>/dev/null | awk '{print "    " $9 ": " $5}'
+            for f in "$LOG_DIR"/*.log; do
+                [ -f "$f" ] || continue
+                sz=$(du -h "$f" 2>/dev/null | cut -f1)
+                printf '    %s (%s)\n' "$(basename "$f")" "${sz:-?}"
+            done
             echo "  轮转文件:"
-            ls -lh "$LOG_DIR"/*.gz 2>/dev/null | awk '{print "    " $9 ": " $5}' || echo "    无"
+            local found_gz=0
+            for f in "$LOG_DIR"/*.gz "$LOG_DIR"/*.log.1; do
+                [ -f "$f" ] || continue
+                sz=$(du -h "$f" 2>/dev/null | cut -f1)
+                printf '    %s (%s)\n' "$(basename "$f")" "${sz:-?}"
+                found_gz=1
+            done
+            [ "$found_gz" -eq 1 ] || echo "    无"
             echo "  任务文件:"
             echo "    待处理: $(ls -1 "$TASKS_DIR"/*.task 2>/dev/null | wc -l || echo 0)"
             echo "    已完成: $(ls -1 "$TASKS_DIR/done/"*.task 2>/dev/null | wc -l || echo 0)"
