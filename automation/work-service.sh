@@ -730,6 +730,37 @@ EOFPLAN
 
     if [ "$status" = "failed" ]; then
         send_notification "Task failed: $task_name" "Failed after $retry_count retries, exit code: $exit_code" "error"
+        # AI 任务失败即时邮件告警（每日最多 1 封，去重）：
+        # 2026-10-15 故障教训 —— vllm/opencode 后端失效时全部 AI 任务秒级失败，
+        # 但自审/自省（原每日告警入口）依赖同一后端，故障期间最长 33.5h 无人告警。
+        # 改用 notify-email.py（纯 SMTP，不依赖 vllm）在失败时直接告警。
+        local task_type alert_key alert_body
+        task_type=$(jq -r '.type // empty' "$work_file" 2>/dev/null)
+        case "$task_type" in
+            ai-*)
+                if [ -n "${EMAIL_PASSWORD:-}" ]; then
+                    alert_key="$LOG_DIR/.ai-fail-alert-$(date +%Y%m%d)"
+                    if [ ! -f "$alert_key" ]; then
+                        touch "$alert_key" 2>/dev/null
+                        alert_body="$LOG_DIR/ai-fail-alert-$(date +%Y%m%d).md"
+                        {
+                            echo "# AI 任务失败告警 (atlisp-worker)"
+                            echo
+                            echo "- 任务: $task_name (type=$task_type)"
+                            echo "- 重试 $retry_count 次后失败, exit code: $exit_code"
+                            echo "- 机器: $(hostname) | 时间: $(date -Iseconds)"
+                            echo
+                            echo "AI 后端 (vllm/opencode) 疑似不可用：全部 AI 任务会立即失败。请检查 vllm 服务与 opencode CLI 版本。"
+                            echo "详情: $LOG_DIR/worker.log"
+                        } > "$alert_body" 2>/dev/null
+                        python3 "$WORK_DIR/notify-email.py" --report "$alert_body" --title "atlisp-worker 告警: AI 任务 [$task_name] 失败" \
+                            >/dev/null 2>&1 || log_warn "AI 失败告警邮件发送失败"
+                    fi
+                else
+                    log_warn "EMAIL_PASSWORD 未设置，AI 任务失败告警邮件未发送 (task=$task_name)"
+                fi
+                ;;
+        esac
     fi
 }
 
