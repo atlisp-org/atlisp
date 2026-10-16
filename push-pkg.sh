@@ -61,9 +61,13 @@ fi
 
 cd "$TARGET_DIR/$PKG_NAME"
 
-# 检查是否为git仓库
-if [ ! -d ".git" ]; then
-    echo "错误: $PKG_NAME 不是git仓库"
+# 检查包目录本身就是 git 仓库（toplevel == 包目录）
+# 注意: 各包是独立 git 仓库（.git 是 gitdir 文件，如
+#       gitdir: ../../.git/modules/packages/modules/<包>），packages/ 不是单体仓库根，
+#       故既不能要求 [-d .git]，也不能要求 toplevel 是 packages/。
+GIT_TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ "$GIT_TOP" != "$(pwd)" ]; then
+    echo "错误: $PKG_NAME 不是独立 git 仓库(git 顶层: ${GIT_TOP:-无}, 期望: $(pwd))"
     exit 1
 fi
 
