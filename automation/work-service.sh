@@ -427,7 +427,15 @@ execute_task() {
             cd "$WORK_DIR" && "$WORK_DIR/sync-all.sh" >> "$LOG_DIR/sync.log" 2>&1 || exit_code=$?
             ;;
         "lint")
-            cd "$WORK_DIR" && make lint >> "$LOG_DIR/lint.log" 2>&1 || exit_code=$?
+            if [ -n "$task_data" ] && [ -f "$task_data" ]; then
+                # 文件级检查（文件监听触发，task_data=变更文件）：只 lint 该文件。
+                # 此前每次文件变更都触发整库 make lint：单次输出 ~3.9M 写入 lint.log
+                # （10M 上限 24h 内轮转 2 次），且 10-16 三次 linter 崩溃（exit=2，
+                # 与并发写入竞态相关）引发 5 次无效重试（10-17 自审）。
+                cd "$WORK_DIR" && "$WORK_DIR/atlisp-lint/bin/atlisp-lint" "$task_data" >> "$LOG_DIR/lint.log" 2>&1 || exit_code=$?
+            else
+                cd "$WORK_DIR" && make lint >> "$LOG_DIR/lint.log" 2>&1 || exit_code=$?
+            fi
             ;;
         "optimize")
             if [ -n "$task_data" ]; then
