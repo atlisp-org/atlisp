@@ -1,84 +1,49 @@
 # @lisp CAD应用云管理系统 — Agent Instructions
 
-## 项目概述
+CAD 应用云管理系统（AutoCAD/ZWCAD/GStarCAD/BricsCAD 内的 AutoLISP 生态）：函数库 + 应用包 + 内核 + 工具链。
 
-@lisp 是一个 CAD 应用云管理系统，包含：
-- **函数库** (lib) — 862 个 AutoLISP 函数
-- **应用包** (packages) — 78 个 CAD 应用
-- **内核** (kernel) — CAD 客户端内核
-- **VSCode 扩展** — 代码编辑器支持
-- **MCP 服务器** — AI 工具接口
-- **解析器** (parser) — LSP 代码解析
+## 仓库结构（重要）
 
-## 仓库结构
+根仓库 + **4 个 git 子模块** + **9 个独立 git 仓库**，每个子目录都是独立仓库：
 
-根仓库包含 **4 个 git 子模块** + 8 个独立项目。
+- 子模块：`packages/`（73 个应用包，各含 `pkg.lsp`；`gis-tools/` 缺 pkg.lsp）、`lib/`（862 个函数，`src/<ns>/<fn>.lsp` 每文件一个函数）、`docs/`、`vscode/`
+- 独立仓库：`kernel/`、`mcp-server/`、`agent/`、`parser/`、`server/`、`atlispcc/`、`atlisp-lint/`、`private-packages/`、`atlisp-lsp/`
+- `web/`、`dwg-knowledge-base/` 为独立实验目录，不在 Makefile 管理范围
 
-### 子模块（4个）
-- `packages/` — 78 个应用包 (gitee.com/atlisp/packages)
-- `lib/` — 函数库，862 个函数
-- `docs/` — 文档
-- `vscode/` — VSCode 扩展源码
+**关键约束**：
+- git 操作（commit/push）必须在对应子目录内执行；根仓库只跟踪子模块指针和根级文件，不要在根目录 `git add .` 把子目录内容一起提交
+- `packages/<包名>/` 每个包本身也是独立 git 仓库
+- `atlisp-lsp` 不在 `make sync-projects` 的循环列表里，需手动 pull
+- 子项目有自己的 AGENTS.md（`lib/`、`kernel/`、`mcp-server/`、`atlispcc/`、`server/`、`atlisp-lint/`、`vscode/`），进入对应子项目工作前先读它
+- `.opencode/skills/` 有 13 个技能（lint-pkg、compile-lsp、push-pkg、build-mcp、sync-all 等），按触发词自动加载
 
-### 独立项目（8个）
-- `kernel/` — CAD 客户端内核
-- `mcp-server/` — MCP 服务器
-- `agent/` — AI 代理
-- `parser/` — LSP 解析器
-- `server/` — 后端服务器
-- `atlispcc/` — 编译器
-- `atlisp-lint/` — 代码检查工具
-- `private-packages/` — 私有包
+## 常用命令（Makefile）
 
-## 工作职责
-
-### 你的核心任务
-1. **代码维护** — 修复 bug、优化代码、重构
-2. **功能开发** — 添加新函数、新包、新功能
-3. **质量检查** — 代码审查、测试、文档
-4. **项目管理** — 同步、发布、版本管理
-
-### 工作原则
-- **安全第一** — 不泄露敏感信息（token、密码）
-- **质量优先** — 代码必须通过 lint 检查
-- **文档同步** — 代码变更必须更新文档
-- **测试覆盖** — 新功能必须有测试
-
-## 常用命令
-
-### 项目管理
 ```bash
-make sync              # 同步所有项目
-make sync-projects     # 同步独立项目
-make status            # 查看项目状态
-make status-projects   # 查看独立项目状态
+make sync / sync-projects      # 同步子模块 / 独立项目
+make status / status-projects  # 查看状态
+make lint                      # 检查 lib/src + packages（用 atlisp-lint/bin/atlisp-lint）
+make lint-fix                  # 自动修复
+make lint-projects             # 检查 kernel/mcp-server/parser/atlispcc/atlisp-lint
+make lint-install              # 安装 pre-commit 钩子（lib + packages 各装一次）
+make packages-check            # 检查每个包是否有 pkg.lsp
+make docs                      # 生成 lib 清单（lib/generate_manifest.py）
+make build-vscode / test-vscode
+make suggestions / suggestions-latest   # 生成/查看开发建议报告（reports/dev-suggestions-YYYYMMDD.md）
 ```
 
-### 代码质量
+## 包发布（重要流程）
+
 ```bash
-make lint              # 检查 lib 和 packages
-make lint-projects     # 检查独立项目
-make lint-fix          # 自动修复问题
-make lint-staged       # 检查暂存区
+./push-pkg.sh <包名> "提交信息" [--lint] [--check] [--force]
 ```
 
-### 包管理
-```bash
-make packages-list     # 列出所有包
-make packages-check    # 检查包规范
-./push-pkg.sh <包名> "提交信息"  # 推送包
-```
+- 每个包是独立 git 仓库，脚本在 `packages/<包名>/` 内执行 pull → add → commit → push（推到 gitee）
+- 包内容变更必须用 push-pkg.sh 提交，不要手动在包目录外操作
+- 子模块指针（根仓库）需要在根仓库单独 commit
 
-### 文档和建议
-```bash
-make suggestions       # 生成开发建议
-make suggestions-latest # 查看最新建议
-make docs              # 生成文档
-```
+## 代码规范（.lsp 文件）
 
-## 代码规范
-
-### LSP 文件规范
 ```lisp
 (defun namespace:function-name (param1 param2)
   "功能说明"
@@ -88,123 +53,26 @@ make docs              # 生成文档
 )
 ```
 
-### 命名规范
-- 函数名：`namespace:function-name`
-- 命名空间：与目录名一致
-- 变量名：使用 `-` 分隔，全局变量用 `*...*`
-
-### 文件编码
-- 所有 `.lsp` 文件必须使用 **UTF-8** 编码
-- 不要使用 GB2312/ANSI
+- 函数名 `namespace:function-name`，命名空间与目录名一致；变量名 `-` 分隔，全局变量 `*...*`
+- 依赖用 `(require '(ns:* ...))` 加载
+- **UTF-8 编码**（不要 GB2312/ANSI）、行长 ≤ 100、无尾部空格、括号匹配
+- 函数必须有 docstring（说明 + 返回值）
 
 ### 新功能归属（lib vs packages）
-新需求先判断归属，完整规则见 `docs/@lisp/库与包归属规则.md`：
+
+规则文档：`docs/@lisp/库与包归属规则.md`
 - 原子函数（输入→输出、无交互、可复用、纯源码）→ `lib/src/<ns>/<fn>.lsp`
 - 完整任务（交互流、菜单/命令、资源文件、外部依赖、全局状态）→ `packages/<包名>/`
 - 拿不准默认归包，被 ≥2 个包复用时再提取到 lib
 
-## 质量标准
+## 测试
 
-### 代码检查项
-- [ ] 括号匹配
-- [ ] 行长度 ≤ 100 字符
-- [ ] 无尾部空格
-- [ ] 函数有文档注释
-- [ ] 变量已声明
-
-### 测试要求
-- 新函数必须有测试
-- 测试文件放在 `lib/test/` 目录
-- 测试命名与函数名一致
-
-### 文档要求
-- 函数必须有 docstring
-- 包必须有 README
-- 重要变更必须更新 CHANGELOG
-
-## 任务模板
-
-### 任务1：修复 Bug
-```
-1. 理解问题：阅读 bug 描述，定位问题代码
-2. 分析原因：找出根本原因
-3. 制定方案：设计修复方案
-4. 实施修复：编写代码
-5. 验证测试：运行测试确保修复
-6. 提交代码：使用 push-pkg.sh 推送
-```
-
-### 任务2：添加新函数
-```
-1. 需求分析：理解功能需求
-2. 设计接口：确定函数签名
-3. 实现代码：编写函数体
-4. 编写测试：添加测试用例
-5. 更新文档：添加 docstring
-6. 代码检查：运行 lint
-```
-
-### 任务3：创建新包
-```
-1. 创建目录：packages/<包名>/
-2. 创建 pkg.lsp：包定义文件
-3. 编写功能：实现核心函数
-4. 添加 README：使用说明
-5. 检查规范：运行 packages-check
-6. 推送发布：使用 push-pkg.sh
-```
+- lib 测试在 **CAD 环境内运行**，不是命令行（框架：`lib/src/test/test-framework.lsp`，`test:run-all` 等）
+- 测试文件放 `lib/test/`，按命名空间镜像 `src/` 布局（`test/<ns>/test-<fn>.lsp`）
+- 各子项目的本地测试：kernel/Makefile、mcp-server（npm test + docker-compose.test.yml）、atlispcc（tests/、Makefile），详见各自 AGENTS.md
 
 ## 错误处理
 
-### 常见问题
-| 问题 | 解决方案 |
-|------|----------|
-| lint 检查失败 | 运行 `make lint-fix` 自动修复 |
-| 同步失败 | 检查网络，手动执行 `git pull` |
-| 测试失败 | 检查测试环境，修复代码 |
-| 编码错误 | 转换为 UTF-8 编码 |
-
-### 错误报告
-遇到无法解决的问题时，记录：
-1. 错误信息
-2. 复现步骤
-3. 已尝试的方案
-4. 当前状态
-
-## 日志和报告
-
-### 日志位置
-- `logs/sync.log` — 同步日志
-- `logs/lint.log` — 代码检查日志
-- `logs/suggestions.log` — 建议生成日志
-
-### 报告位置
-- `reports/dev-suggestions-*.md` — 开发建议报告
-
-## 安全注意事项
-
-### 不要泄露
-- Token、密码、授权码
-- 私钥、证书
-- 内部 API 地址
-
-### 安全操作
-- 使用环境变量存储敏感信息
-- 不要在代码中硬编码密码
-- 定期更新授权码
-
-## 沟通规范
-
-### 状态汇报
-- 完成任务后汇报结果
-- 遇到问题及时反馈
-- 提供清晰的操作记录
-
-### 代码提交
-- 提交信息清晰明了
-- 包含变更原因和影响
-- 关联相关 issue
-
----
-
-*此文档是你的工作手册，请仔细阅读并遵守。*
+- lint 失败 → `make lint-fix` 自动修复，仍失败再手动处理
+- 子模块/同步失败 → 检查网络后手动 `git pull` 对应子目录
+- 提交前跑 `make lint-staged`（或依赖 `make lint-install` 的 pre-commit 钩子）
