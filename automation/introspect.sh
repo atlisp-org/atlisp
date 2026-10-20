@@ -32,7 +32,15 @@ mkdir -p "$(dirname "$OUT")"
     if [ -n "$latest_review" ] && [ -f "$latest_review" ]; then
         echo "文件: $latest_review ($(date -r "$latest_review" '+%Y-%m-%d %H:%M'))"
         echo
-        head -c 6000 "$latest_review"
+        # 截断必须显式标注（教训 [2026-10-20] 输入截断必须显式标注）：
+        # 部分缺失无标注比完全缺失更隐蔽；消费端须能凭标注读原文弥补
+        if [ "$(wc -c < "$latest_review" 2>/dev/null)" -gt 6000 ]; then
+            head -c 6000 "$latest_review"
+            echo
+            echo "> [截断, 仅前 6000 字节, 全文在 $latest_review — 须读原文弥补]"
+        else
+            cat "$latest_review"
+        fi
     else
         echo "(无)"
     fi
@@ -44,7 +52,14 @@ mkdir -p "$(dirname "$OUT")"
     if [ -n "$latest_intro" ] && [ -f "$latest_intro" ]; then
         echo "文件: $latest_intro ($(date -r "$latest_intro" '+%Y-%m-%d %H:%M'))"
         echo
-        head -c 4000 "$latest_intro"
+        # 截断必须显式标注（教训 [2026-10-20] 输入截断必须显式标注）
+        if [ "$(wc -c < "$latest_intro" 2>/dev/null)" -gt 4000 ]; then
+            head -c 4000 "$latest_intro"
+            echo
+            echo "> [截断, 仅前 4000 字节, 全文在 $latest_intro — 须读原文弥补]"
+        else
+            cat "$latest_intro"
+        fi
     else
         echo "(无——这是首次自省，无历史教训可对照)"
     fi
@@ -55,7 +70,15 @@ mkdir -p "$(dirname "$OUT")"
     if [ -s "$LESSONS" ]; then
         echo "条目数: $(grep -c '^- \[' "$LESSONS" 2>/dev/null)"
         echo
-        head -c 6000 "$LESSONS"
+        # 截断必须显式标注（教训 [2026-10-20]）：条目数是全文计数，
+        # 摘录截断时消费端必须知道"看到的不是全部"，否则会误判最新教训不存在
+        if [ "$(wc -c < "$LESSONS" 2>/dev/null)" -gt 6000 ]; then
+            head -c 6000 "$LESSONS"
+            echo
+            echo "> [截断, 仅前 6000 字节（最新教训可能在截断之外）, 全文在 $LESSONS — 须读原文弥补]"
+        else
+            cat "$LESSONS"
+        fi
     else
         echo "(空——尚无沉淀的教训)"
     fi
@@ -85,7 +108,14 @@ mkdir -p "$(dirname "$OUT")"
     if [ -n "$rejected" ]; then
         echo "$rejected" | while read -r r; do
             echo "- $(date -r "$r" '+%Y-%m-%d %H:%M')  $(basename "$r")"
-            head -c 1500 "$r"
+            # 截断必须显式标注（教训 [2026-10-20]）
+            if [ "$(wc -c < "$r" 2>/dev/null)" -gt 1500 ]; then
+                head -c 1500 "$r"
+                echo
+                echo "  > [截断, 仅前 1500 字节, 全文在 $r]"
+            else
+                cat "$r"
+            fi
             echo
         done
     else
