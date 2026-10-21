@@ -94,6 +94,36 @@ mkdir -p "$(dirname "$OUT")"
     ls -t "$WORK_DIR/reports" 2>/dev/null | head -8 | sed 's/^/  - /'
     echo
 
+    echo "## 上次自省报告 (introspection, 改进措施须逐项核验)"
+    # 自审核验清单须覆盖"上次自省改进措施"（教训 [2026-10-21] 改进措施是第三类悬置项）。
+    # 此前输入仅列 reports 顶层文件名（introspection/ 子目录不可见），改进措施静默脱落 2 连日；
+    # 优先整段提取 "## 3." 改进措施节（避免字节截断切掉尾部，教训 [2026-10-20]），无 §3 时回退全文/带标注截断。
+    intro_dir="$WORK_DIR/reports/introspection"
+    latest_intro=$(ls -t "$intro_dir"/introspection-*.md 2>/dev/null | head -1)
+    if [ -n "$latest_intro" ] && [ -f "$latest_intro" ]; then
+        echo "文件: $latest_intro ($(date -r "$latest_intro" '+%Y-%m-%d %H:%M'))"
+        echo
+        sec=$(sed -n '/^## 3\./,$p' "$latest_intro")
+        if [ -n "$sec" ]; then
+            if [ "$(wc -c <<< "$sec")" -gt 4000 ]; then
+                printf '%s\n' "$sec" | head -c 4000
+                echo
+                echo "> [截断, 仅改进措施节前 4000 字节, 全文在 $latest_intro — 须读原文弥补]"
+            else
+                printf '%s\n' "$sec"
+            fi
+        elif [ "$(wc -c < "$latest_intro" 2>/dev/null)" -gt 4000 ]; then
+            head -c 4000 "$latest_intro"
+            echo
+            echo "> [截断, 仅前 4000 字节, 全文在 $latest_intro — 须读原文弥补]"
+        else
+            cat "$latest_intro"
+        fi
+    else
+        echo "(无)"
+    fi
+    echo
+
     echo "## 日志体积"
     # sort 输出可能因 head 提前关闭管道而产生 SIGPIPE 噪声，静默其 stderr
     du -sh "$LOG_DIR"/*.log 2>/dev/null | sort -rh 2>/dev/null | head -8
