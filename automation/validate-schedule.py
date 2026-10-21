@@ -12,6 +12,7 @@ ALLOWED_TYPES = {
     "ai-learn", "ai-article", "ai-monitor", "ai-security", "ai-deploy",
     "ai-compare", "ai-explain", "ai-refactor-batch", "ai-generate-pkg",
     "ai-fix-all", "ai-execute-plan", "ai-self-review", "ai-introspect",
+    "ai-agent-optimize",
 }
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DAYS_RE = re.compile(

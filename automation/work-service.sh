@@ -659,6 +659,42 @@ EOFPLAN
                 log_warn "AI 未写出自省报告，已回退保存会话输出"
             fi
             ;;
+        "ai-agent-optimize")
+            local opt_date opt_report opt_input opt_applied
+            opt_date=$(date +%Y%m%d)
+            opt_report="$WORK_DIR/reports/agent-optimize/agent-optimize-$opt_date.md"
+            opt_input="$LOG_DIR/agent-optimize-input-$opt_date.md"
+            opt_applied="$WORK_DIR/reports/agent-optimize/applied.md"
+            mkdir -p "$WORK_DIR/reports/agent-optimize"
+            python3 "$WORK_DIR/automation/agent-memory-analysis.py" "$opt_input" > /dev/null 2>&1 || true
+            call_opencode "你是 @lisp 自动化员工（atlisp-worker）的 agent 项目优化模块。职责：分析 ~/.atlisp/memory/ 里的真实用户会话，找出 agent 项目 /home/vitalgg/atlisp/agent 中的反复出现问题，做最小且可验证的优化。
+【输入】
+- 会话分析输入: $opt_input（总览统计 + 最近 48 小时会话详情 + 全量会话索引，超长内容已显式标注截断）。
+- 已应用优化: $opt_applied（若文件不存在则视为首次运行）。
+- memory 原文: ~/.atlisp/memory/（每个文件一轮消息, memory.<sessionId>.json）；输入细节不足时按需读取原文交叉核对。
+【分析要求】
+1. 只针对「反复出现」的问题：同类问题（误判 / 回答错误 / 编造图纸属性 / 工具缺失 / 用户重复提问或抱怨）在 2 个及以上会话出现，或单会话有严重问题的充分证据。
+2. 先对照 $opt_applied：已有优化条目的问题跳过（除非 memory 显示该修复无效——在报告中说明重新处理的原因）。
+3. 根因必须定位到 agent 项目的具体代码（文件 + 函数）；若根因不在 agent（CAD 端数据 / 模型能力 / 用户问题），只记录到报告，不改代码。
+【实施要求】（仅当存在可优化项时执行）
+4. 动手前检查 /home/vitalgg/atlisp/agent 的 git status --porcelain：若有未提交改动（可能是昨夜未完成），先运行 npx vitest run，通过则作为昨夜工作的收尾提交（报告中注明）再继续；不通过则 git restore . 并在报告说明。
+5. 最小改动：只改 /home/vitalgg/atlisp/agent/src/（含 src/test/ 测试），遵循仓库规范（新行为加测试、匹配既有代码风格），覆盖率棘轮不得跌破。不要改 lib、packages、kernel 或根仓库。
+6. 验证（全部必须，在 /home/vitalgg/atlisp/agent 内执行）：npx vitest run（全量通过）、npx eslint src/、npx prettier --check src/。
+7. 任一验证失败：git restore . 回滚，并在报告明确「改动已回滚，原因是…」。不要把失败的改动带入第二天。
+8. 验证通过后：git add + git commit（conventional commit 格式、中文描述、引用 memory 证据），然后 git push origin main。
+【输出1（必须）】把分析报告写入 $opt_report（Markdown，包含：总览、发现的问题（带会话证据）、本次应用项（改动点 + commit hash）、未应用项（原因）、回滚项（原因）、后续观察建议）。
+【输出2（必须）】若实际应用了优化，更新 $opt_applied：
+  - 行格式: - [YYYY-MM-DD] 问题摘要 → 改动点 (agent@短hash)，一行一条；
+  - 保持总条目数不超过 60 条，超出时删除最旧条目；
+  - 若今日未应用任何优化，不要修改该文件。
+最后在回答末尾给出报告路径与 commit hash（如有）。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
+            if [ -s "$opt_report" ]; then
+                log_info "Agent 优化报告: $opt_report"
+            else
+                sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$opt_report" 2>/dev/null || true
+                log_warn "AI 未写出 agent 优化报告，已回退保存会话输出"
+            fi
+            ;;
         "ai-monitor")
             call_opencode "请分析系统运行状态、任务执行情况，生成监控报告和优化建议" "$task_id" || exit_code=$?
             ;;

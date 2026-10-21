@@ -1,155 +1,164 @@
 {
-    "version": 1,
-    "updated": "2026-10-12T00:00:00+08:00",
-    "grace_seconds": 3600,
-    "tasks": [
-        {
-            "id": "daily-sync",
-            "name": "Daily sync",
-            "type": "sync",
-            "time": "22:00",
-            "priority": 1,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "daily-lint",
-            "name": "Daily lint check",
-            "type": "lint",
-            "time": "22:30",
-            "priority": 2,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "ai-review",
-            "name": "AI code review",
-            "type": "ai-review",
-            "time": "22:45",
-            "priority": 2,
-            "days": "*",
-            "data": "lib/src",
-            "enabled": true
-        },
-        {
-            "id": "gen-suggestions",
-            "name": "Generate suggestions",
-            "type": "generate",
-            "time": "23:00",
-            "priority": 3,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "ai-plan",
-            "name": "AI plan tomorrow",
-            "type": "ai-plan",
-            "time": "23:15",
-            "priority": 3,
-            "days": "*",
-            "data": "明日开发任务",
-            "enabled": true
-        },
-        {
-            "id": "code-clean",
-            "name": "Code cleanup",
-            "type": "clean",
-            "time": "23:30",
-            "priority": 4,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "gen-docs",
-            "name": "Generate docs",
-            "type": "docs",
-            "time": "00:00",
-            "priority": 3,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "ai-daily",
-            "name": "AI daily report",
-            "type": "ai-daily",
-            "time": "00:15",
-            "priority": 2,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "ai-suggest",
-            "name": "AI suggestions",
-            "type": "ai-suggest",
-            "time": "03:00",
-            "priority": 3,
-            "days": "*",
-            "data": "整个项目",
-            "enabled": true
-        },
-        {
-            "id": "ai-article",
-            "name": "AI article",
-            "type": "ai-article",
-            "time": "05:00",
-            "priority": 2,
-            "days": "*",
-            "dynamic": "article_pkg",
-            "enabled": true
-        },
-        {
-            "id": "self-review",
-            "name": "Self review & iterate",
-            "type": "ai-self-review",
-            "time": "06:00",
-            "priority": 2,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "introspection",
-            "name": "Introspection & lessons",
-            "type": "ai-introspect",
-            "time": "06:30",
-            "priority": 3,
-            "days": "*",
-            "enabled": true
-        },
-        {
-            "id": "weekly-full",
-            "name": "Weekly full check",
-            "type": "full-check",
-            "time": "01:00",
-            "priority": 1,
-            "days": "6",
-            "enabled": true
-        },
-        {
-            "id": "ai-weekly",
-            "name": "AI weekly report",
-            "type": "ai-weekly",
-            "time": "01:15",
-            "priority": 2,
-            "days": "6",
-            "enabled": true
-        },
-        {
-            "id": "monthly-full",
-            "name": "Monthly maintenance",
-            "type": "full-check",
-            "time": "02:00",
-            "priority": 1,
-            "days": "dom:01",
-            "enabled": true
-        },
-        {
-            "id": "ai-monthly",
-            "name": "AI monthly summary",
-            "type": "ai-learn",
-            "time": "02:15",
-            "priority": 3,
-            "days": "dom:01",
-            "enabled": true
-        }
-    ]
+  "version": 1,
+  "updated": "2026-10-21T16:10:00+08:00",
+  "grace_seconds": 3600,
+  "tasks": [
+    {
+      "id": "daily-sync",
+      "name": "Daily sync",
+      "type": "sync",
+      "time": "22:00",
+      "priority": 1,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "agent-optimize",
+      "name": "Agent optimize from memory",
+      "type": "ai-agent-optimize",
+      "time": "22:00",
+      "priority": 2,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "daily-lint",
+      "name": "Daily lint check",
+      "type": "lint",
+      "time": "22:30",
+      "priority": 2,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "ai-review",
+      "name": "AI code review",
+      "type": "ai-review",
+      "time": "22:45",
+      "priority": 2,
+      "days": "*",
+      "data": "lib/src",
+      "enabled": true
+    },
+    {
+      "id": "gen-suggestions",
+      "name": "Generate suggestions",
+      "type": "generate",
+      "time": "23:00",
+      "priority": 3,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "ai-plan",
+      "name": "AI plan tomorrow",
+      "type": "ai-plan",
+      "time": "23:15",
+      "priority": 3,
+      "days": "*",
+      "data": "明日开发任务",
+      "enabled": true
+    },
+    {
+      "id": "code-clean",
+      "name": "Code cleanup",
+      "type": "clean",
+      "time": "23:30",
+      "priority": 4,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "gen-docs",
+      "name": "Generate docs",
+      "type": "docs",
+      "time": "00:00",
+      "priority": 3,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "ai-daily",
+      "name": "AI daily report",
+      "type": "ai-daily",
+      "time": "00:15",
+      "priority": 2,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "ai-suggest",
+      "name": "AI suggestions",
+      "type": "ai-suggest",
+      "time": "03:00",
+      "priority": 3,
+      "days": "*",
+      "data": "整个项目",
+      "enabled": true
+    },
+    {
+      "id": "ai-article",
+      "name": "AI article",
+      "type": "ai-article",
+      "time": "05:00",
+      "priority": 2,
+      "days": "*",
+      "dynamic": "article_pkg",
+      "enabled": true
+    },
+    {
+      "id": "self-review",
+      "name": "Self review & iterate",
+      "type": "ai-self-review",
+      "time": "06:00",
+      "priority": 2,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "introspection",
+      "name": "Introspection & lessons",
+      "type": "ai-introspect",
+      "time": "06:30",
+      "priority": 3,
+      "days": "*",
+      "enabled": true
+    },
+    {
+      "id": "weekly-full",
+      "name": "Weekly full check",
+      "type": "full-check",
+      "time": "01:00",
+      "priority": 1,
+      "days": "6",
+      "enabled": true
+    },
+    {
+      "id": "ai-weekly",
+      "name": "AI weekly report",
+      "type": "ai-weekly",
+      "time": "01:15",
+      "priority": 2,
+      "days": "6",
+      "enabled": true
+    },
+    {
+      "id": "monthly-full",
+      "name": "Monthly maintenance",
+      "type": "full-check",
+      "time": "02:00",
+      "priority": 1,
+      "days": "dom:01",
+      "enabled": true
+    },
+    {
+      "id": "ai-monthly",
+      "name": "AI monthly summary",
+      "type": "ai-learn",
+      "time": "02:15",
+      "priority": 3,
+      "days": "dom:01",
+      "enabled": true
+    }
+  ]
 }
