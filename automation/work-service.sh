@@ -35,6 +35,12 @@ AI_LONG_TASK_TIMEOUT="${AI_LONG_TASK_TIMEOUT:-3600}"
 MAX_RETRY="${MAX_RETRY:-2}"
 WEBHOOK_URL="${WEBHOOK_URL:-}"
 
+# 邮件凭证：setup-email.sh 写入 ~/.atlisp-email-config，但 systemd unit 只加载
+# /etc/atlisp/atlisp-worker.env（不含该项）。在此 source 使 AI 失败告警邮件可真正发出
+# （2026-10-22 自审发现告警链路从未触发，见 reports/self-review-20261022.md）
+EMAIL_CONFIG_FILE="${HOME:-/home/vitalgg}/.atlisp-email-config"
+[ -f "$EMAIL_CONFIG_FILE" ] && . "$EMAIL_CONFIG_FILE"
+
 # Dedup / throttle
 AI_FIX_ALL_COOLDOWN="${AI_FIX_ALL_COOLDOWN:-1800}"
 WATCH_THROTTLE="${WATCH_THROTTLE:-300}"
@@ -779,7 +785,9 @@ EOFPLAN
         # 但自审/自省（原每日告警入口）依赖同一后端，故障期间最长 33.5h 无人告警。
         # 改用 notify-email.py（纯 SMTP，不依赖 vllm）在失败时直接告警。
         local task_type alert_key alert_body
-        task_type=$(jq -r '.type // empty' "$work_file" 2>/dev/null)
+        # $work_file 已在上方被 mv 到 done/，须从归档路径读 type
+        # （2026-10-22 自审：原代码读不存在的文件 → type 恒空 → ai-* 分支从未触发）
+        task_type=$(jq -r '.type // empty' "$WORK_DIR/tasks/done/$task_id.task" 2>/dev/null)
         case "$task_type" in
             ai-*)
                 if [ -n "${EMAIL_PASSWORD:-}" ]; then

@@ -52,7 +52,10 @@ mkdir -p "$(dirname "$OUT")"
                  t, mark, c[t], ok[t]+0, fa[t]+0, (d[t]/c[t]), m[t]+0, r[t]+0}}' "$tmp" | sort
         echo
         echo "### 失败/超时明细（exit=124 表示超时）"
+        # 截断必须显式标注（教训 [2026-10-20]）：head -30 之外若还有失败，消费端须知情
+        fail_total=$(awk -F'\t' '$2!="completed"' "$tmp" | wc -l)
         awk -F'\t' '$2!="completed"{printf "- %s exit=%s retries=%s\n", $1, $5, $4}' "$tmp" | head -30
+        [ "$fail_total" -gt 30 ] && echo "(截断: 仅显示前 30 条/共 $fail_total 条, 全量明细见 tasks/done/*.task)"
     else
         echo "(近 24 小时无已完成任务)"
     fi
@@ -69,11 +72,19 @@ mkdir -p "$(dirname "$OUT")"
     echo
 
     echo "## 近期错误 (worker.log)"
+    # 截断必须显式标注（教训 [2026-10-20]）：tail -20 之外的错误总数须知情
+    err_total=$(grep -ac '\[ERROR\]' "$LOG_DIR/worker.log" 2>/dev/null)
+    err_total=${err_total:-0}
     grep -a '\[ERROR\]' "$LOG_DIR/worker.log" 2>/dev/null | tail -20
+    [ "$err_total" -gt 20 ] && echo "(截断: 仅显示最近 20 条/共 $err_total 条, 全量日志见 $LOG_DIR/worker.log)"
     echo
 
     echo "## lint 汇总 (lint-check.log)"
+    # 截断必须显式标注（教训 [2026-10-20]）：tail -3 之外的记录总数须知情
+    lint_total=$(grep -acE '个错误|个警告' "$LOG_DIR/lint-check.log" 2>/dev/null)
+    lint_total=${lint_total:-0}
     grep -aE '个错误|个警告' "$LOG_DIR/lint-check.log" 2>/dev/null | tail -3
+    [ "$lint_total" -gt 3 ] && echo "(截断: 仅显示最近 3 条/共 $lint_total 条, 全量日志见 $LOG_DIR/lint-check.log)"
     echo
 
     echo "## 计划与报告"
