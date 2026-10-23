@@ -121,6 +121,9 @@ make all
 - 支持按天去重、宽限期补跑（`grace_seconds`）、按优先级并发（AI 任务 3 路 / 普通任务 2 路）
 - 每天 06:00 的自我迭代任务会分析运行指标并**自动改写自身调度**（候选配置经
   `validate-schedule.py` 校验通过才生效，历史备份在 `logs/schedule-history/`）
+- AI 报告有效性按「非空 + mtime ≥ 本次任务开始」判定；未写出报告时回退只写
+  `*.attempt-fallback.bak`，不覆盖正式报告路径（防止残留转储被误判为成功）
+- AI 任务超时按即败型处理（同 prompt 重试大概率再超时，直接归档失败 + 邮件告警）
 
 work-service.sh 使用的任务类型（schedule.json 的 `type` 字段）：
 `sync`、`lint`、`optimize`、`generate`、`docs`、`clean`、`full-check`

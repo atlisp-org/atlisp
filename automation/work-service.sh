@@ -407,6 +407,27 @@ call_opencode() {
     return "${rc:-0}"
 }
 
+# ---- 报告有效性判定 / 回退 ----
+# 任务重试场景下，正式报告路径可能残留上一次尝试的回退内容；仅凭 [ -s ] 判非空
+# 会把残留误判为"AI 已写出"，掩盖失败（2026-10-23 self-review/introspection 各
+# 3 次超时、正式报告被会话转储污染即此缺陷）。有效性 = 非空 且 mtime 不早于本次任务开始。
+report_fresh() {
+    local file=$1 task_start=$2
+    [ -s "$file" ] || return 1
+    local mtime
+    mtime=$(stat -c %Y "$file" 2>/dev/null || echo 0)
+    [ "$mtime" -ge "$task_start" ]
+}
+
+# 回退保存去 ANSI 的会话输出：只写 <report>.attempt-fallback.bak，永不覆盖正式
+# 报告路径（残留转储会被次日报告链当作真报告消费，且污染重试的成功判定）
+save_fallback_session() {
+    local task_id=$1 report=$2
+    sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" \
+        > "${report}.attempt-fallback.bak" 2>/dev/null || true
+    log_warn "AI 未写出报告，会话输出已存 ${report}.attempt-fallback.bak"
+}
+
 # ---- Execute a single task ----
 execute_task() {
     local task_file=$1
@@ -503,11 +524,10 @@ execute_task() {
 不得与其矛盾；若实测报告指出的错误级问题影响某建议，请在该建议中标注依赖关系。
 要求：建议必须具体、可落地，结合项目现状说明理由；每条包含 —— 名称、价值/收益、实现要点、工作量（S/M/L）、优先级（高/中/低）。以 Markdown 清单输出，按优先级排序，避免泛泛而谈与纯代码风格类意见。
 最后必须：把完整报告写入文件 $suggest_file（Markdown，含标题与生成时间），并在回答末尾给出该文件路径。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
-                if [ ! -s "$suggest_file" ]; then
-                    log_warn "AI 未写出报告文件，回退保存去 ANSI 的会话输出"
-                    sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$suggest_file" 2>/dev/null || true
+                if ! report_fresh "$suggest_file" "$start_time"; then
+                    save_fallback_session "$task_id" "$suggest_file"
                 fi
-                if [ -s "$suggest_file" ]; then
+                if report_fresh "$suggest_file" "$start_time"; then
                     log_info "AI 建议报告: $suggest_file"
                     # 邮件通知（本任务的职责；dev-suggestions 不再发邮件）
                     if [ -f "${HOME}/.atlisp-email-config" ]; then
@@ -627,14 +647,21 @@ EOFPLAN
   - time 为 HH:MM；priority 为 1-5 整数；days 为 * / 1-7 / dom:DD；type 必须为现有任务类型
   - 必须保留 id=self-review 与 id=introspection 且均 enabled=true；不得清空任务
   - 仅做有依据的最小改动；若无调整必要，请不要生成该文件
+【边界】时间预算约 45 分钟，优先完成【输出1】报告写盘。本任务只做分析与调度建议：禁止修改任何代码/脚本/配置文件（work-service.sh、automation/*.sh、agent、lib、packages、kernel 等一律不改）；发现的代码问题写入报告作为建议，交由对应任务处理。
 最后在回答末尾给出报告路径。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
-            if [ -s "$review_report" ]; then
+            if report_fresh "$review_report" "$start_time"; then
                 log_info "自我迭代报告: $review_report"
             else
-                sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$review_report" 2>/dev/null || true
-                log_warn "AI 未写出自我迭代报告，已回退保存会话输出"
+                save_fallback_session "$task_id" "$review_report"
+                log_error "AI 未写出自我迭代报告（本次尝试无产出，日志: logs/opencode-$task_id.log）"
             fi
-            apply_proposed_schedule
+            # 仅应用本次任务新产生的候选调度：残留的历史候选（服务中断等）不代表当日判断
+            if [ -f "$WORK_DIR/logs/schedule.proposed.json" ] && \
+               [ "$(stat -c %Y "$WORK_DIR/logs/schedule.proposed.json" 2>/dev/null || echo 0)" -ge "$start_time" ]; then
+                apply_proposed_schedule
+            else
+                log_info "无本次任务产生的调度调整建议"
+            fi
             ;;
         "ai-introspect")
             local introspect_date introspect_report introspect_input introspect_lessons
@@ -657,12 +684,13 @@ EOFPLAN
   - 新增与既有条目语义不同的教训，追加在文件末尾；
   - 保持总条目数不超过 60 条，超出时删除最旧的条目；
   - 若今日确无新教训，则不要修改该文件。
+【边界】时间预算约 40 分钟，优先完成【输出1】报告与【输出2】lessons.md 写盘；除这两处外不得修改任何其他文件（代码/脚本/配置一律不改），发现的问题写入报告作为建议。
 最后在回答末尾给出报告与教训文件的路径。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
-            if [ -s "$introspect_report" ]; then
+            if report_fresh "$introspect_report" "$start_time"; then
                 log_info "自省报告: $introspect_report"
             else
-                sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$introspect_report" 2>/dev/null || true
-                log_warn "AI 未写出自省报告，已回退保存会话输出"
+                save_fallback_session "$task_id" "$introspect_report"
+                log_error "AI 未写出自省报告（本次尝试无产出，日志: logs/opencode-$task_id.log）"
             fi
             ;;
         "ai-agent-optimize")
@@ -693,12 +721,13 @@ EOFPLAN
   - 行格式: - [YYYY-MM-DD] 问题摘要 → 改动点 (agent@短hash)，一行一条；
   - 保持总条目数不超过 60 条，超出时删除最旧条目；
   - 若今日未应用任何优化，不要修改该文件。
+【时间预算】约 50 分钟；若临近预算，优先保证 vitest/eslint/prettier 验证通过并完成 commit 或回滚，报告可精简但不可缺。
 最后在回答末尾给出报告路径与 commit hash（如有）。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
-            if [ -s "$opt_report" ]; then
+            if report_fresh "$opt_report" "$start_time"; then
                 log_info "Agent 优化报告: $opt_report"
             else
-                sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$opt_report" 2>/dev/null || true
-                log_warn "AI 未写出 agent 优化报告，已回退保存会话输出"
+                save_fallback_session "$task_id" "$opt_report"
+                log_error "AI 未写出 agent 优化报告（本次尝试无产出，日志: logs/opencode-$task_id.log）"
             fi
             ;;
         "ai-monitor")
@@ -750,7 +779,12 @@ EOFPLAN
     local retry_count
     retry_count=$(jq -r '.retry_count // 0' "$work_file" 2>/dev/null)
     [[ "$retry_count" =~ ^[0-9]+$ ]] || retry_count=0
-    if [ "$status" = "failed" ] && [ "$retry_count" -lt "$MAX_RETRY" ]; then
+    if [ "$status" = "failed" ] && [ "$exit_code" -eq 124 ]; then
+        # 即败型：同 prompt、同超时上限的重试大概率以同样方式再次超时
+        # （2026-10-23 self-review/introspection 各 3×3600s 全超时，连烧 3.5h 并
+        # 互相抢占 vllm）。直接归档失败并告警，根因留给次日自审/自省分析。
+        log_error "AI 任务超时（${duration}s 达上限），按即败型跳过重试: $task_name"
+    elif [ "$status" = "failed" ] && [ "$retry_count" -lt "$MAX_RETRY" ]; then
         retry_count=$((retry_count + 1))
         if jq ".retry_count = $retry_count | .status = \"pending\" | .last_error = \"exit code $exit_code\"" \
             "$work_file" > "$work_file.tmp" 2>/dev/null; then
@@ -1098,7 +1132,15 @@ check_code_quality() {
 
     mv -f "$lint_tmp" "$lint_out" 2>/dev/null || rm -f "$lint_tmp"
 
-    log_info "Code check: $error_count errors, $warning_count warnings"
+    # 巡检长期 0 错误、警告仅漂移：无变化时不刷日志（worker.log 曾累计 5602 条
+    # 同值巡检行，纯噪声）；出现错误或计数变化仍立即记录，闭环复检能力不受影响
+    local qs_file="$LOG_DIR/.quality-last-summary" qs_now qs_last
+    qs_now="$error_count/$warning_count"
+    qs_last=$(cat "$qs_file" 2>/dev/null || echo "")
+    if [ "$error_count" -gt 0 ] || [ "$qs_now" != "$qs_last" ]; then
+        log_info "Code check: $error_count errors, $warning_count warnings"
+        printf '%s' "$qs_now" > "$qs_file"
+    fi
 
     if [ "$error_count" -gt 0 ] && ! has_pending_task "ai-fix-all" && ! has_recent_done_task "ai-fix-all" "$AI_FIX_ALL_COOLDOWN"; then
         create_task "AI fix all errors" "ai-fix-all" 1
