@@ -6,6 +6,7 @@
 #   3. 写入队列：
 #      queue/qzone/<YYYYMMDD>-<pkg>.txt    首行=说说文字，img: 行=第一屏图片
 #      queue/douyin/<YYYYMMDD>-<pkg>.json  { video, title, topics, private }
+#      queue/channels/<YYYYMMDD>-<pkg>.json { video, title, desc, private }
 #
 # copy.json 结构（opencode 产出）：
 #   { "qzone": "...", "title": "...", "topics": ["..."], "slides": ["屏1", ..., "屏4"] }
@@ -127,8 +128,9 @@ def main():
     video = media / f"{d}-{pkg}.mp4"
     qzone_file = ROOT / "queue" / "qzone" / f"{d}-{pkg}.txt"
     douyin_file = ROOT / "queue" / "douyin" / f"{d}-{pkg}.json"
+    channels_file = ROOT / "queue" / "channels" / f"{d}-{pkg}.json"
 
-    if video.exists() and qzone_file.exists() and douyin_file.exists():
+    if video.exists() and qzone_file.exists() and douyin_file.exists() and channels_file.exists():
         print(f"[gen-content] {d}-{pkg} 今日已生成过，跳过")
         return
 
@@ -159,6 +161,17 @@ def main():
         encoding="utf-8",
     )
     print(f"[gen-content] 抖音队列: {douyin_file} (title={title!r}, topics={topics})")
+
+    # 5) 写视频号队列（desc 复用说说的文字，自带话题标签）
+    channels_file.parent.mkdir(parents=True, exist_ok=True)
+    channels_file.write_text(
+        json.dumps(
+            {"video": f"media/{d}-{pkg}.mp4", "title": title, "desc": qzone_text, "private": False},
+            ensure_ascii=False, indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    print(f"[gen-content] 视频号队列: {channels_file}")
 
 
 if __name__ == "__main__":

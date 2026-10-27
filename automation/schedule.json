@@ -126,6 +126,16 @@
       "enabled": true
     },
     {
+      "id": "autopost-channels",
+      "name": "AutoPost WeChat Channels",
+      "type": "autopost",
+      "time": "14:00",
+      "priority": 3,
+      "days": "*",
+      "data": "channels",
+      "enabled": true
+    },
+    {
       "id": "autopost-douyin",
       "name": "AutoPost Douyin",
       "type": "autopost",

@@ -5,7 +5,8 @@
 
 - **常驻进程**：`autopost.service`（systemd）拉起二维码服务（8123）+ QQ空间守护进程（8124）
 - **定时调度**：`automation/schedule.json` 里的 `autopost-qzone`（10:00）/
-  `autopost-douyin`（16:00）任务，经 `work-service.sh` 调 `bin/post-once.mjs` 执行
+  `autopost-channels`（14:00）/ `autopost-douyin`（16:00）任务，
+  经 `work-service.sh` 调 `bin/post-once.mjs` 执行
 - **开关**：`/etc/atlisp/atlisp-worker.env` 里 `AUTOPOST_MODE=off|publish`（默认 publish；
   队列为空时任务自动空转，有内容文件才真正发）
 - 本目录的 `bin/schedule.js`（自带 cron 调度器）保留作独立运行用，worker 在跑时不要再启动它
@@ -14,6 +15,12 @@
 - **抖音**：双通道
   - **通道 A（官方）**：抖音开放平台 API（OAuth 授权 → 上传视频 → 创建视频，含自动刷新 token、分片上传）——需要**企业主体**
   - **通道 B（兜底）**：抖音创作者平台（creator.douyin.com）网页自动化——个人账号可用
+- **微信视频号**：视频号助手（channels.weixin.qq.com）网页自动化——个人账号可用，微信 App 扫码
+  - 官方 API 同样需要企业主体，个人走网页通道
+  - 登录态存持久化 profile（`state/profiles/channels`，同 qzone 模式）；
+    微信网页会话可能中途失效（实测约 1 小时后被踢回 login.html），发布失败提示
+    「登录态已失效」时重新 `node bin/channels-login.js` 扫码即可
+  - ⚠️ 微信系风控比抖音严，频率每天 1 条封顶，封号风险自担
 
 > ⚠️ **风险声明**：QQ空间/创作者平台的网页自动化**违反平台用户协议**，存在验证码、限流、封号风险，请自行承担。
 > 控制频率（一天 1~3 条）、用真实网络环境、避免高频机械操作。发布的内容要合规（推广文案不要硬导流，抖音话题审核很严）。
@@ -34,17 +41,20 @@ autopost/
 │   ├── douyin-oauth.js   # 抖音开放平台 OAuth 授权
 │   ├── douyin-web-login.js # 创作者平台扫码登录（兜底通道）
 │   ├── douyin-publish.js # 抖音发一个视频（自动选通道 A/B）
+│   ├── channels-login.js # 视频号扫码登录（微信 App 扫 8123/wechat.png）
 │   └── schedule.js       # 定时调度器（node-cron，独立运行用）
 ├── lib/                  # 核心模块
 │   ├── common.js         # 配置/日志/浏览器/登录态/内容解析
 │   ├── qzone-session.js  # QQ空间会话管理器（守护进程核心：登录/发布/探测）
 │   ├── qzone.js          # QQ空间一次性脚本（旧通道，保留）
 │   ├── douyin-api.js     # 抖音开放平台官方 API
-│   └── douyin-web.js     # 创作者平台网页自动化
+│   ├── douyin-web.js     # 创作者平台网页自动化
+│   └── wechat-channels.js# 视频号助手网页自动化（登录+发布）
 ├── scripts/              # 调试脚本（二维码 HTTP 服务、DOM 探测等）
 ├── queue/                # 内容队列（发布成功后移入 posted/）
 │   ├── qzone/*.txt       # 首行=文字，img: 行=图片路径
-│   └── douyin/*.json     # { video, title, topics, private }
+│   ├── douyin/*.json     # { video, title, topics, private }
+│   └── channels/*.json   # { video, title, desc, private }（微信视频号）
 ├── media/                # 生成的竖版视频 & 画面帧（已 gitignore）
 ├── state/                # 登录态 & token（已 gitignore，勿外传）
 │   └── profiles/qzone/   # 空间浏览器持久化 profile（等同账号凭证，勿外传）
@@ -70,6 +80,7 @@ gen-content.py               确定性渲染：
                                 queue/douyin/<日期>-<包>.json
         │
 autopost-qzone (10:00) /     到点照常发布队列里的内容
+autopost-channels (14:00) /
 autopost-douyin (16:00)
 ```
 

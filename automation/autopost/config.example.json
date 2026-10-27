@@ -15,7 +15,24 @@
     }
   },
   "schedule": [
-    { "platform": "qzone", "cron": "0 9 * * *", "queueDir": "queue/qzone" },
-    { "platform": "douyin", "cron": "10 20 * * *", "queueDir": "queue/douyin", "mode": "auto" }
-  ]
+    {
+      "platform": "qzone",
+      "cron": "0 9 * * *",
+      "queueDir": "queue/qzone"
+    },
+    {
+      "platform": "douyin",
+      "cron": "10 20 * * *",
+      "queueDir": "queue/douyin",
+      "mode": "auto"
+    }
+  ],
+  "wechat": {
+    "channels": {
+      "web": {
+        "stateFile": "state/wechat-channels.json",
+        "profileDir": "state/profiles/channels"
+      }
+    }
+  }
 }

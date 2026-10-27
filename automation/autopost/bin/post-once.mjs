@@ -19,6 +19,7 @@ import { loadConfig, abs, log, parseQzoneFile } from '../lib/common.js';
 import { postViaDaemon } from '../lib/qzone-session.js';
 import { publishVideo } from '../lib/douyin-api.js';
 import { douyinWebPublish } from '../lib/douyin-web.js';
+import { channelsWebPublish } from '../lib/wechat-channels.js';
 
 const platform = process.argv[2] || '';
 const dryRun = process.argv.includes('--dry-run');
@@ -41,8 +42,8 @@ function movePosted(file, dir) {
 }
 
 async function main() {
-  if (!['qzone', 'douyin'].includes(platform)) {
-    console.error('用法: node bin/post-once.mjs qzone|douyin [--dry-run]');
+  if (!['qzone', 'douyin', 'channels'].includes(platform)) {
+    console.error('用法: node bin/post-once.mjs qzone|douyin|channels [--dry-run]');
     process.exit(2);
   }
 
@@ -61,6 +62,15 @@ async function main() {
     const { text, images } = parseQzoneFile(file);
     if (!text) throw new Error('内容文件首行（文字）为空');
     await postViaDaemon({ text, images, dryRun }, cfg.qzone || {});
+  } else if (platform === 'channels') {
+    const content = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!content.video) throw new Error('JSON 缺少 video 字段');
+    await channelsWebPublish({
+      video: content.video,
+      title: content.title || '',
+      desc: content.desc || '',
+      dryRun,
+    });
   } else {
     const content = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!content.video) throw new Error('JSON 缺少 video 字段');
