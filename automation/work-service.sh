@@ -1002,6 +1002,41 @@ EOFPLAN
                     >> "$LOG_DIR/autopost.log" 2>&1 || exit_code=$?
             fi
             ;;
+        "autopost-content")
+            # 自动生成推广内容：轮换挑包 → opencode 写文案 → gen-content.py 渲染视频+入队。
+            # 生成的内容进 autopost 队列，由 autopost-qzone/autopost-douyin 任务到点发布。
+            if [ "$AUTOPOST_MODE" = "off" ]; then
+                log_info "autopost-content: AUTOPOST_MODE=off，跳过"
+            else
+                local ap_pkg ap_copy
+                ap_pkg=$(pick_autopost_pkg)
+                if [ -z "$ap_pkg" ]; then
+                    log_warn "autopost-content: 未找到可用应用包，跳过"
+                else
+                    ap_copy="$LOG_DIR/autopost-copy-$(date +%Y%m%d-%H%M%S).json"
+                    call_opencode "你是面向 CAD 用户的 @lisp 推广文案作者。请为应用包【$ap_pkg】生成一套社交媒体推广内容。
+【素材】先阅读 ~/atlisp/packages/$ap_pkg/ 下的文件（README.md、pkg.lsp、*.lsp、*.org 等），弄清它解决什么问题、提供哪些命令/功能；示例必须来自真实内容，禁止编造。
+【输出】把结果写入文件 $ap_copy（UTF-8，纯 JSON，不要 markdown 代码围栏），结构（英文键、中文值）：
+{
+  \"qzone\": \"QQ空间说说正文：80~180字，口语化，包含 1 个真实使用场景 + 1 个实际命令，结尾一句收益；可带 1~2 个 #话题# 标签；不要硬广口吻、不要外链和二维码\",
+  \"title\": \"抖音标题：15~30字，有钩子（痛点/反差/数字），不夸大\",
+  \"topics\": [\"话题1\", \"话题2\", \"话题3\"],
+  \"slides\": [\"第1屏\", \"第2屏\", \"第3屏\", \"第4屏\"]
+}
+- topics：3~5 个，选平台真实存在的垂类话题（如 AutoCAD、CAD插件、AutoLISP、工程效率 等），不要生造
+- slides：竖版短视频的屏文案，4 屏，每屏 ≤16 个汉字；第1屏是钩子，第2~3屏是痛点/方案，第4屏收束（可含 atlisp.cn）
+【要求】中文；命令名/函数名必须来自该包真实内容；不要提及抖音/公众号/微信等其他平台；不要虚假承诺。
+完成后确认文件已写入，并在回答末尾输出该文件路径。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
+                    if [ -s "$ap_copy" ]; then
+                        python3 "$AUTOPOST_DIR/bin/gen-content.py" --pkg "$ap_pkg" --copy "$ap_copy" \
+                            >> "$LOG_DIR/autopost.log" 2>&1 || exit_code=$?
+                        echo "$(date +%F) $ap_pkg" >> "$AUTOPOST_TOPIC_LOG"
+                    else
+                        log_warn "autopost-content: AI 未写出文案文件（$ap_copy），跳过；题材 $ap_pkg 不计入已用"
+                    fi
+                fi
+            fi
+            ;;
         *)
             log_error "Unknown task type: $task_type"
             exit_code=1
@@ -1341,6 +1376,25 @@ pick_article_pkg() {
     [ -z "$all" ] && return 0
     # 近 60 条已用题材优先排除（候选不足时回退全量）
     used=$(tail -60 "$ARTICLE_TOPIC_LOG" 2>/dev/null | awk '{print $2}' | sort -u)
+    cand="$all"
+    if [ -n "$used" ]; then
+        cand=$(comm -23 <(echo "$all") <(echo "$used"))
+        [ -z "$cand" ] && cand="$all"
+    fi
+    echo "$cand" | shuf -n 1
+}
+
+# ---- 社交推广内容生成（autopost） ----
+AUTOPOST_DIR="$WORK_DIR/automation/autopost"
+AUTOPOST_TOPIC_LOG="$WORK_DIR/logs/autopost-topics.log"
+
+pick_autopost_pkg() {
+    local all used cand
+    all=$(find "$WORK_DIR/packages" -mindepth 1 -maxdepth 1 -type d ! -name '.*' \
+          -exec basename {} \; 2>/dev/null | sort)
+    [ -z "$all" ] && return 0
+    # 与微信文章题材独立轮换：近 60 条已用优先排除（候选不足时回退全量）
+    used=$(tail -60 "$AUTOPOST_TOPIC_LOG" 2>/dev/null | awk '{print $2}' | sort -u)
     cand="$all"
     if [ -n "$used" ]; then
         cand=$(comm -23 <(echo "$all") <(echo "$used"))

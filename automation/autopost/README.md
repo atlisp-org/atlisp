@@ -30,6 +30,7 @@ autopost/
 │   ├── qzone-login.js    # QQ空间扫码登录（一次性，会话不跨重启时仅作备用）
 │   ├── qzone-post.js     # QQ空间发一条（走守护进程）
 │   ├── post-once.mjs     # 单发入口（atlisp-worker 调度调用：取队列第一个文件发布）
+│   ├── gen-content.py    # 内容生成（AI 文案 → Pillow 渲染竖版视频 → 写入队列）
 │   ├── douyin-oauth.js   # 抖音开放平台 OAuth 授权
 │   ├── douyin-web-login.js # 创作者平台扫码登录（兜底通道）
 │   ├── douyin-publish.js # 抖音发一个视频（自动选通道 A/B）
@@ -44,10 +45,37 @@ autopost/
 ├── queue/                # 内容队列（发布成功后移入 posted/）
 │   ├── qzone/*.txt       # 首行=文字，img: 行=图片路径
 │   └── douyin/*.json     # { video, title, topics, private }
+├── media/                # 生成的竖版视频 & 画面帧（已 gitignore）
 ├── state/                # 登录态 & token（已 gitignore，勿外传）
 │   └── profiles/qzone/   # 空间浏览器持久化 profile（等同账号凭证，勿外传）
 └── logs/                 # run.log + 调试截图 screenshots/ + 二维码 qrcode/
 ```
+
+## 推广内容自动生成（atlisp-worker 任务 `autopost-content`）
+
+每天 08:30 由 worker 自动执行（`work-service.sh` 的 `autopost-content` 分支）：
+
+```
+pick_autopost_pkg()          轮换挑一个应用包（logs/autopost-topics.log 记已用，
+                             与微信文章题材独立轮换，近 60 条不重复）
+        │
+call_opencode                AI 读 packages/<包>/ 素材，写出文案 JSON：
+                             { qzone: 说说的文字, title: 抖音标题,
+                               topics: 话题[], slides: 4 屏视频文案[] }
+        │
+gen-content.py               确定性渲染：
+                             ① Pillow 画 4 屏 1080×1920 竖版画面（品牌深蓝底）
+                             ② ffmpeg xfade 合成 ~10s 短视频 → media/
+                             ③ 写队列 queue/qzone/<日期>-<包>.txt（含首屏配图）
+                                queue/douyin/<日期>-<包>.json
+        │
+autopost-qzone (10:00) /     到点照常发布队列里的内容
+autopost-douyin (16:00)
+```
+
+- 当日同一包重复生成会自动跳过（文件已存在）
+- 手动跑：`python3 bin/gen-content.py --pkg <包名> --copy <文案.json>`
+- 依赖：`python3 + Pillow`（画面渲染）、`ffmpeg`（合成，无需 drawtext）
 
 ## 安装
 

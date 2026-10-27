@@ -107,6 +107,15 @@
       "enabled": true
     },
     {
+      "id": "autopost-content",
+      "name": "AutoPost content generate",
+      "type": "autopost-content",
+      "time": "08:30",
+      "priority": 3,
+      "days": "*",
+      "enabled": true
+    },
+    {
       "id": "autopost-qzone",
       "name": "AutoPost QQ Space",
       "type": "autopost",

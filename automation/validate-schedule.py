@@ -13,8 +13,9 @@ ALLOWED_TYPES = {
     "ai-compare", "ai-explain", "ai-refactor-batch", "ai-generate-pkg",
     "ai-fix-all", "ai-execute-plan", "ai-self-review", "ai-introspect",
     "ai-agent-optimize",
-    # 社交推广发布（QQ空间/抖音），task_data 为平台名，实现见 automation/autopost/
-    "autopost",
+    # 社交推广（QQ空间/抖音），实现见 automation/autopost/
+    "autopost",           # 发布：task_data 为平台名（qzone|douyin）
+    "autopost-content",   # 生成：轮换挑包 → AI 文案 → 渲染视频 → 入队
 }
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DAYS_RE = re.compile(
