@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-21T16:10:00+08:00",
+  "updated": "2026-10-26T16:24:08+08:00",
   "grace_seconds": 3600,
   "tasks": [
     {
@@ -16,7 +16,7 @@
       "id": "agent-optimize",
       "name": "Agent optimize from memory",
       "type": "ai-agent-optimize",
-      "time": "22:00",
+      "time": "20:00",
       "priority": 2,
       "days": "*",
       "enabled": true
@@ -104,6 +104,26 @@
       "priority": 2,
       "days": "*",
       "dynamic": "article_pkg",
+      "enabled": true
+    },
+    {
+      "id": "autopost-qzone",
+      "name": "AutoPost QQ Space",
+      "type": "autopost",
+      "time": "10:00",
+      "priority": 3,
+      "days": "*",
+      "data": "qzone",
+      "enabled": true
+    },
+    {
+      "id": "autopost-douyin",
+      "name": "AutoPost Douyin",
+      "type": "autopost",
+      "time": "16:00",
+      "priority": 3,
+      "days": "*",
+      "data": "douyin",
       "enabled": true
     },
     {

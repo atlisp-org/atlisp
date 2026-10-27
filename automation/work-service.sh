@@ -49,6 +49,16 @@ WATCH_THROTTLE="${WATCH_THROTTLE:-300}"
 # 0 错误 + 只有警告漂移），默认降至 1 小时一次（见 reports/self-review-*）。
 QUALITY_CHECK_INTERVAL="${QUALITY_CHECK_INTERVAL:-3600}"
 
+# 文章生成后发布到公众号：off | dry-run | draft | publish
+# draft = 只建草稿（默认，人工预览后发表）；publish = 直接 freepublish/submit
+WECHAT_ARTICLE_MODE="${WECHAT_ARTICLE_MODE:-draft}"
+# 社交推广自动发布（automation/autopost，QQ空间/抖音）：off | publish
+# 队列为空时任务自动空转（不发布）；有内容文件才真正发。失败保留文件下周期重试。
+# 注意：网页自动化频率要克制（每天 1~2 条），账号被风控时先停（置 off）
+AUTOPOST_MODE="${AUTOPOST_MODE:-publish}"
+# 发布动作经跳板机执行（其出口 IP 在公众号白名单内）；置空则本机直连微信接口
+WECHAT_RELAY_HOST="${WECHAT_RELAY_HOST:-atlisp.cn}"
+
 # Log rotation
 LOG_ROTATE_SIZE="${LOG_ROTATE_SIZE:-10485760}"
 
@@ -118,6 +128,41 @@ send_notification() {
 # v2.0 起 `opencode run` 不再接受 `--pure`，带上它会在 10 秒内以 exit 1 失败，
 # 使全部 AI 任务静默失效。这里集中声明参数并在启动时预检。
 OPENCODE_FLAGS=(--auto)
+# 可选：固定自动化用的模型/agent（不设则用 opencode.json 的默认值，v2: provider/model#variant）
+OPENCODE_MODEL="${OPENCODE_MODEL:-}"
+OPENCODE_AGENT="${OPENCODE_AGENT:-}"
+
+# 夜间廉价模型：在窗口 [NIGHT_START, NIGHT_END) 内启动的 AI 任务
+# 改用 NIGHT_MODEL（默认 deepseek/deepseek-flash，成本约为本地模型的 1/10），
+# 窗口外（白天 08:30-18:05）用 OPENCODE_MODEL/opencode 默认。
+# 置空 NIGHT_MODEL 即关闭；均可经 /etc/atlisp/atlisp-worker.env 覆盖。
+NIGHT_MODEL="${NIGHT_MODEL:-deepseek/deepseek-flash}"
+NIGHT_START="${NIGHT_START:-18:05}"
+NIGHT_END="${NIGHT_END:-08:30}"
+
+# 能力位（由 check_opencode_cli 探测，老版本缺参数时自动降级为兼容模式）：
+#   JSON   `run --format json`：逐行结构化事件，可拿到纯文本回复/错误类型/用量/会话 ID
+#   SESSION `run --session <id>`：预分配会话 ID，超时按 ID 精确取消，不再 list+标题撞库
+#   FILE   `run --file <path>`：超长提示词作为附件直接进上下文，省掉一次 read 工具往返
+OC_CAP_JSON=0
+OC_CAP_SESSION=0
+OC_CAP_FILE=0
+
+# 当前时刻是否落在窗口 [NIGHT_START, NIGHT_END)（HH:MM，支持跨零点，
+# 如 18:05→08:30 表示 18:05:00 ~ 次日 08:29:59；start 含、end 不含）
+in_night_window() {
+    local now_m start_m end_m
+    [[ "$NIGHT_START" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || return 1
+    [[ "$NIGHT_END"   =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || return 1
+    now_m=$((10#$(date +%H) * 60 + 10#$(date +%M)))
+    start_m=$((10#${NIGHT_START%%:*} * 60 + 10#${NIGHT_START##*:}))
+    end_m=$((10#${NIGHT_END%%:*} * 60 + 10#${NIGHT_END##*:}))
+    if [ "$start_m" -lt "$end_m" ]; then
+        [ "$now_m" -ge "$start_m" ] && [ "$now_m" -lt "$end_m" ]
+    else
+        [ "$now_m" -ge "$start_m" ] || [ "$now_m" -lt "$end_m" ]
+    fi
+}
 
 check_opencode_cli() {
     if ! command -v opencode > /dev/null 2>&1; then
@@ -127,7 +172,11 @@ check_opencode_cli() {
 
     local help flag
     help=$(opencode run --help 2>&1 || true)
-    for flag in "${OPENCODE_FLAGS[@]}"; do
+    local required=(--title)
+    # NIGHT_MODEL 启用时同样需要 --model 支持（夜间任务会传 --model）
+    { [ -n "$OPENCODE_MODEL" ] || [ -n "$NIGHT_MODEL" ]; } && required+=(--model)
+    [ -n "$OPENCODE_AGENT" ] && required+=(--agent)
+    for flag in "${OPENCODE_FLAGS[@]}" "${required[@]}"; do
         if ! grep -q -- "$flag" <<< "$help"; then
             log_error "opencode run 不支持参数 $flag（CLI 版本变更？），AI 任务将全部失败"
             send_notification "opencode CLI 参数不兼容" \
@@ -136,7 +185,30 @@ check_opencode_cli() {
             return 1
         fi
     done
-    log_info "opencode CLI 预检通过: $(opencode --version 2>/dev/null || echo unknown)"
+
+    # 可选能力：有则启用，无则降级并留痕（不阻塞 AI 任务）
+    OC_CAP_JSON=0; OC_CAP_SESSION=0; OC_CAP_FILE=0
+    grep -q -- '--format' <<< "$help"  && OC_CAP_JSON=1
+    grep -q -- '--session' <<< "$help" && OC_CAP_SESSION=1
+    grep -q -- '--file' <<< "$help"    && OC_CAP_FILE=1
+    [ "$OC_CAP_JSON" = 1 ]    || log_warn "opencode run 无 --format json，退回纯文本解析（错误定位与用量统计能力受限）"
+    [ "$OC_CAP_SESSION" = 1 ] || log_warn "opencode run 无 --session，超时清理退回按标题查找会话"
+    [ "$OC_CAP_FILE" = 1 ]    || log_warn "opencode run 无 --file，超长提示词退回\"先读取文件\"提示"
+
+    local ver
+    ver=$(opencode --version 2>/dev/null || echo unknown)
+    # 实际输出形如 "opencode v2.0.29"
+    if ! grep -qE '(^|[^0-9])2\.[0-9]+' <<< "$ver"; then
+        log_warn "opencode 版本 $ver 不在 2.x，运行于兼容模式"
+    fi
+
+    if ! opencode session delete --help > /dev/null 2>&1; then
+        log_warn "opencode session delete 不可用，超时后无法清理服务端会话"
+    fi
+    if ! opencode session list -n 1 --format json > /dev/null 2>&1; then
+        log_warn "opencode 后台服务不可达（session list 失败）；持续存在时 AI 任务会失败"
+    fi
+    log_info "opencode CLI 预检通过: $ver${OPENCODE_MODEL:+ (model=$OPENCODE_MODEL)}${OPENCODE_AGENT:+ (agent=$OPENCODE_AGENT)} (night=${NIGHT_MODEL:-off} ${NIGHT_START}-${NIGHT_END}) (json=${OC_CAP_JSON} session=${OC_CAP_SESSION} file=${OC_CAP_FILE})"
     return 0
 }
 
@@ -179,6 +251,8 @@ init() {
     fi
 
     echo $$ > "$PID_FILE"
+    # 上次异常退出（SIGKILL/断电）遗留的会话：CLI 已死但服务端可能仍在生成，按 ID 清掉
+    cleanup_stale_opencode_sessions
     rm -f "$LOG_DIR"/oc-*.pid
     log_info "Service started (PID: $$)"
 
@@ -223,6 +297,8 @@ cleanup() {
         fi
     done
     rm -f "$LOG_DIR"/oc-*.pid
+    # CLI 已杀，但服务端会话可能还在跑：按预分配 ID 删除，避免停服后继续写文件
+    cleanup_stale_opencode_sessions
     if [ -n "$WATCH_PID" ] && kill -0 "$WATCH_PID" 2>/dev/null; then
         pkill -TERM -P "$WATCH_PID" 2>/dev/null || true
         kill -TERM "$WATCH_PID" 2>/dev/null || true
@@ -331,6 +407,53 @@ EOF
 }
 
 # ---- Call opencode AI ----
+# opencode v2 是客户端/服务端架构：超时或停服时 kill 掉的只是 CLI 客户端，会话仍在
+# 后台服务里继续生成（历史上表现为"杀了还在 16 分钟后写日报"）。v2.0.29 起
+# `opencode run` 提供三项对自动化很关键的参数：
+#   --session <id>  预分配会话 ID（不存在则创建）→ 超时/停服按 ID 精确取消，
+#                   不再 `session list -n 100` + 标题匹配（同秒启动会撞名误删别人的会话）
+#   --format json   逐行事件（text/tool_use/step_finish/error）→ 取纯文本、结构化错误、
+#                   token/费用，避免 ANSI 与 TUI 噪声污染会话转储和 ai-plan 的 JSON
+#   --file <path>   附件直接进上下文 → 超长提示词不必再让模型先 read 一遍
+# 刻意不用 --standalone：每个任务单起私有服务会重复占内存，也与共享服务的会话数据割裂。
+delete_opencode_session() {
+    local sid=$1 del_out
+    [ -n "$sid" ] || return 0
+    command -v opencode > /dev/null 2>&1 || return 0
+    if del_out=$(timeout 15 opencode session delete "$sid" 2>&1); then
+        log_info "已删除会话 $sid"
+    elif grep -qi 'not found' <<< "$del_out"; then
+        log_info "会话 $sid 不存在（未及创建），无需清理"
+    else
+        log_warn "会话删除失败: $sid: $(printf '%s' "$del_out" | tail -1)"
+    fi
+}
+
+cleanup_opencode_session() {
+    local title=$1 sid=$2
+    command -v opencode > /dev/null 2>&1 || return 0
+    if [ -z "$sid" ]; then
+        # 兼容模式（老版本无 --session）：退回按标题在会话列表里查找
+        sid=$(opencode session list -n 100 --format json 2>/dev/null \
+            | jq -r --arg t "$title" '.[] | select(.title == $t) | .id' 2>/dev/null | head -1)
+    fi
+    if [ -z "$sid" ]; then
+        log_warn "未找到超时会话（title=$title），可能有残留"
+        return 0
+    fi
+    delete_opencode_session "$sid"
+}
+
+# 清理异常中断（SIGKILL/断电）留下的会话记录：init 启动时与 cleanup 停服时调用
+cleanup_stale_opencode_sessions() {
+    local f
+    for f in "$LOG_DIR"/oc-*.sid; do
+        [ -e "$f" ] || continue
+        delete_opencode_session "$(cat "$f" 2>/dev/null)"
+        rm -f "$f"
+    done
+}
+
 call_opencode() {
     local prompt=$1
     local task_id=$2
@@ -343,67 +466,153 @@ call_opencode() {
         fi
     fi
 
-    local prompt_bytes
+    local prompt_file="" prompt_bytes
+    local -a oc_file_args=()
     prompt_bytes=$(printf '%s' "$prompt" | wc -c)
     if [ "$prompt_bytes" -gt 100000 ]; then
-        local prompt_file
         prompt_file=$(mktemp "$LOG_DIR/prompt-XXXXXX")
         printf '%s' "$prompt" > "$prompt_file"
         log_warn "Prompt too long (${prompt_bytes} bytes), saved to $prompt_file"
-        prompt="Your task description is long. First read $prompt_file in full, then follow the instructions in the file."
+        if [ "$OC_CAP_FILE" = "1" ]; then
+            # 附件直达上下文，省掉"先 read 文件"的一次工具往返
+            oc_file_args=(--file "$prompt_file")
+            prompt="你的完整任务说明在同一条消息的附件中（$prompt_file）。请先通读附件，再严格按其中的要求执行。"
+        else
+            prompt="Your task description is long. First read $prompt_file in full, then follow the instructions in the file."
+        fi
     fi
 
-    log_info "Calling opencode: ${prompt:0:200}"
+    # 模型选择：夜间窗口且配置了 NIGHT_MODEL → 廉价模型；否则 OPENCODE_MODEL / opencode 默认
+    local model="${OPENCODE_MODEL:-}"
+    if [ -n "$NIGHT_MODEL" ] && in_night_window; then
+        model="$NIGHT_MODEL"
+    fi
 
-    local out_file start_ts rc opencode_pid
+    log_info "Calling opencode (model=${model:-default}): ${prompt:0:200}"
+
+    local out_file err_file start_ts rc opencode_pid oc_title oc_sid
     out_file=$(mktemp "$LOG_DIR/opencode-out-XXXXXX")
+    err_file=$(mktemp "$LOG_DIR/opencode-err-XXXXXX")
     start_ts=$(date +%s)
+    # 标题带上任务号与启动时间：人工在 session list 里可辨认
+    oc_title="worker-${task_id:-manual}-$(date +%s)"
+    # 预分配会话 ID：超时/停服时无需扫描会话列表即可精确取消
+    oc_sid=""
+    [ "$OC_CAP_SESSION" = "1" ] && oc_sid="ses_worker_${task_id:-manual}_$(date +%s%N)"
 
-    setsid timeout "$task_timeout" opencode run "$prompt" "${OPENCODE_FLAGS[@]}" > "$out_file" 2>&1 9>&- &
+    local -a oc_args=("${OPENCODE_FLAGS[@]}" --title "$oc_title")
+    [ "$OC_CAP_JSON" = "1" ] && oc_args+=(--format json)
+    [ -n "$oc_sid" ] && oc_args+=(--session "$oc_sid")
+    [ -n "$model" ] && oc_args+=(--model "$model")
+    [ -n "$OPENCODE_AGENT" ] && oc_args+=(--agent "$OPENCODE_AGENT")
+
+    # stdout（JSON 事件流）与 stderr（客户端日志）必须分开：混流会破坏逐行 JSON 解析。
+    # 超时交给 timeout 自己：默认模式下它会为目标命令新建进程组，超时先 TERM 整组，
+    # --kill-after 再兜底 KILL，rc=124；不必在 shell 里轮询（省掉每次最多 5s 空等）。
+    setsid timeout --kill-after=10 "$task_timeout" opencode run "$prompt" "${oc_args[@]}" \
+        ${oc_file_args[@]+"${oc_file_args[@]}"} \
+        > "$out_file" 2> "$err_file" 9>&- &
     opencode_pid=$!
     echo "$opencode_pid" > "$LOG_DIR/oc-$opencode_pid.pid"
+    [ -n "$oc_sid" ] && echo "$oc_sid" > "$LOG_DIR/oc-$opencode_pid.sid"
 
-    while kill -0 "$opencode_pid" 2>/dev/null; do
-        local elapsed=$(( $(date +%s) - start_ts ))
-        if [ "$elapsed" -ge "$task_timeout" ]; then
-            log_error "AI task timed out (${elapsed}s), killing process group $opencode_pid"
-            kill -TERM -- "-$opencode_pid" 2>/dev/null || true
-            sleep 3
-            kill -KILL -- "-$opencode_pid" 2>/dev/null || true
-            rc=124
-            break
-        fi
-        sleep 5
-    done
+    wait "$opencode_pid" 2>/dev/null
+    rc=$?
 
-    if [ "${rc:-0}" -ne 124 ]; then
-        wait "$opencode_pid" 2>/dev/null
-        rc=$?
+    # 124=超时、143=收到 SIGTERM（停服）：CLI 已死，但服务端会话可能还在跑
+    if [ "${rc:-0}" -eq 124 ] || [ "${rc:-0}" -eq 143 ]; then
+        cleanup_opencode_session "$oc_title" "$oc_sid"
     fi
 
-    local result
-    result=$(cat "$out_file" 2>/dev/null)
-    rm -f "$out_file"
+    local result="" err_events="" usage="" steps=0 tok_in=0 tok_out=0 cost=0 tools=""
+    if [ "$OC_CAP_JSON" = "1" ]; then
+        # 逐行流式解析（不 slurp，避免大段工具输出占内存）；fromjson? 容忍被超时截断的末行
+        result=$(jq -R -r 'fromjson? | select(.type == "text") | .part.text' "$out_file" 2>/dev/null)
+        [ -z "$oc_sid" ] && oc_sid=$(jq -R -r 'fromjson? | .sessionID // empty' "$out_file" 2>/dev/null | head -1)
+        err_events=$(jq -R -r 'fromjson? | select(.type == "error") | "\(.error.type // "error"): \(.error.message // "")"' \
+            "$out_file" 2>/dev/null | head -3)
+        usage=$(jq -R -r 'fromjson? | select(.type == "step_finish") | [(.part.tokens.input // 0), (.part.tokens.output // 0), (.part.cost // 0)] | @tsv' \
+            "$out_file" 2>/dev/null \
+            | awk 'NF >= 3 { n++; i += $1; o += $2; c += $3 } END { printf "%d %d %d %.6f", n+0, i+0, o+0, c+0 }')
+        read -r steps tok_in tok_out cost <<< "$usage"
+        tools=$(jq -R -r 'fromjson? | select(.type == "tool_use") | .part.tool // empty' "$out_file" 2>/dev/null \
+            | sort | uniq -c | awk '{ printf "%s%s×%d", (n++ ? " " : ""), $2, $1 }')
+        # step_finish 只覆盖"工具调用步"，纯文本收尾步不上报；成功时以
+        # `session export` 的会话汇总为准（含标题生成等全部调用），拿到再覆盖
+        if [ -n "$oc_sid" ] && [ "${rc:-0}" -eq 0 ]; then
+            local export_json export_usage export_steps
+            export_json=$(timeout 15 opencode session export "$oc_sid" 2>/dev/null)
+            if [ -n "$export_json" ]; then
+                export_usage=$(jq -r '[(.info.tokens.input // 0), (.info.tokens.output // 0), (.info.cost // 0)] | @tsv' \
+                    <<< "$export_json" 2>/dev/null)
+                export_steps=$(jq -r '[.messages[]? | select(.type == "assistant")] | length' \
+                    <<< "$export_json" 2>/dev/null)
+                if [ -n "$export_usage" ]; then
+                    read -r tok_in tok_out cost <<< "$export_usage"
+                    [ "${export_steps:-0}" -gt 0 ] && steps=$export_steps
+                fi
+            fi
+        fi
+    else
+        # 兼容模式：纯文本 + 去 ANSI
+        result=$(sed 's/\x1b\[[0-9;]*m//g' "$out_file" 2>/dev/null)
+    fi
+
+    # 失败时把 stderr 尾部并入会话记录（JSON 模式下 stdout 已不含客户端日志）
+    if [ "${rc:-0}" -ne 0 ] && [ -s "$err_file" ]; then
+        result+=$'\n--- stderr ---\n'"$(sed 's/\x1b\[[0-9;]*m//g' "$err_file" | tail -40)"
+    fi
+
+    local duration=$(( $(date +%s) - start_ts ))
+    rm -f "$out_file" "$err_file"
+    [ -n "$prompt_file" ] && rm -f "$prompt_file"
 
     if [ "$rc" -eq 124 ]; then
-        log_error "AI task killed (timeout)"
+        log_error "AI task killed (timeout, ${duration}s, session=${oc_sid:-?})"
     elif [ "$rc" -eq 143 ]; then
-        log_info "AI task stopped (service shutdown)"
+        log_info "AI task stopped (service shutdown, session=${oc_sid:-?})"
     elif [ "$rc" -ne 0 ]; then
-        log_error "opencode exited abnormally (exit code $rc)"
-        # CLI 参数被拒绝时立刻点名原因，避免"快速失败"被误读为正常回落
+        log_error "opencode exited abnormally (exit code $rc, ${duration}s)"
+        if [ -n "$err_events" ]; then
+            log_error "opencode 错误事件: $(printf '%s' "$err_events" | tr '\n' ';')"
+        fi
+        # 兼容模式/无结构化错误时，仍按文本特征给出可操作提示
         if grep -qi 'Unrecognized flag' <<< "$result"; then
             log_error "opencode 拒绝 CLI 参数（疑似 opencode 升级），请核对 OPENCODE_FLAGS"
         fi
+        if grep -qiE 'ProviderModelNotFound|model[^ ]* not found|模型.*不存在|provider\.no-route' <<< "$result$err_events"; then
+            log_error "opencode 模型不可用，请检查 OPENCODE_MODEL 与 opencode.json 的 provider 配置"
+        elif grep -qiE 'fetch failed|ECONNREFUSED|connect ECONN|provider\.auth' <<< "$result$err_events"; then
+            log_error "opencode 后台服务或模型后端连接/鉴权失败（检查 opencode serve 与 vllm）"
+        fi
     else
-        log_info "opencode completed"
+        log_info "opencode completed (${duration}s${tools:+, tools: $tools}${oc_sid:+, session=$oc_sid})"
+        if [ -n "$err_events" ]; then
+            log_warn "opencode 会话内含错误事件: $(printf '%s' "$err_events" | tr '\n' ';')"
+        fi
+    fi
+
+    # 用量落盘：按任务统计 token/费用与耗时，供自审/自省做量化分析
+    if [ "$OC_CAP_JSON" = "1" ] && [ "${steps:-0}" -gt 0 ]; then
+        log_info "opencode 用量: steps=$steps tokens_in=$tok_in tokens_out=$tok_out cost=$cost"
+        if [ -n "$task_id" ]; then
+            jq -cn --arg ts "$(date -Iseconds)" --arg task "$task_id" \
+                --argjson rc "${rc:-0}" --argjson dur "$duration" \
+                --argjson steps "$steps" --argjson tin "$tok_in" \
+                --argjson tout "$tok_out" --arg cost "$cost" --arg session "$oc_sid" \
+                --arg model "${model:-}" \
+                '{time:$ts, task:$task, rc:$rc, duration:$dur, steps:$steps,
+                  tokens_in:$tin, tokens_out:$tout, cost:($cost|tonumber),
+                  session:$session, model:$model}' \
+                >> "$LOG_DIR/opencode-usage.jsonl" 2>/dev/null || true
+        fi
     fi
 
     if [ -n "$task_id" ]; then
         echo "$result" > "$LOG_DIR/opencode-$task_id.log"
     fi
 
-    rm -f "$LOG_DIR/oc-$opencode_pid.pid"
+    rm -f "$LOG_DIR/oc-$opencode_pid.pid" "$LOG_DIR/oc-$opencode_pid.sid"
     return "${rc:-0}"
 }
 
@@ -610,19 +819,37 @@ EOFPLAN
         "ai-article")
             local art_pkg art_file
             art_pkg="$task_data"
-            art_file="$WORK_DIR/docs/@lisp-article-$(date +%Y%m%d)-${art_pkg}.md"
-            mkdir -p "$WORK_DIR/docs"
+            art_file="$WORK_DIR/docs/@lisp-article/@lisp-article-$(date +%Y%m%d)-${art_pkg}.md"
+            mkdir -p "$WORK_DIR/docs/@lisp-article"
             call_opencode "你是面向 CAD 用户的 @lisp 推广作者。请以应用包【$art_pkg】为题材，写一篇推广/介绍文章。
 【素材】先阅读 ~/atlisp/packages/$art_pkg/ 下的文件（README.md、pkg.lsp、*.lsp、*.org 等），弄清它解决什么问题、提供哪些命令/功能、如何使用；示例必须来自真实内容。
 【角度】二选一（自行判断更合适者）：
  (a) 面向 CAD 用户：使用介绍 —— 场景痛点 → 该包如何解决 → 具体命令与操作示例；
  (b) 面向开发者：AutoLISP 开发介绍 —— 实现思路、关键函数、可复用技巧。
 【加分】若能自然结合 AI 能力（规范问答、代码生成、@lisp AI 助手等），请融入正文。
+【公众号排版】文章会直接转成公众号图文，必须严格按下列骨架输出（「标题备选」与「正文」两块缺一不可）：
+# 文章标题（文件标题，可随意）
+**一句话卖点**：20~60 字（必填，直接作为公众号摘要，不得超过 120 字）
+---
+## 标题备选
+1. **正式标题（20 字内，有信息量）**
+2. **备选标题**
+## 正文
+### 导语
+2~3 句、60~120 字，写清场景痛点与本文价值（摘要缺失时会取这段）。
+### 一、小节标题
+正文段落、命令示例与代码。
+### 二、小节标题
+……
+### 小结
+一句话收束，给出适用场景或下一步。
+> 生成时间：$(date +%F) ｜ 所涉包：$art_pkg
 【要求】中文，正文 1000~1500 字；结构清晰（标题 / 导语 / 小标题 / 示例代码 / 小结）；函数名与命令必须来自该包真实内容，禁止编造；避免夸大宣传与空话。
 最后必须：把文章写入文件 $art_file（Markdown，含标题、生成时间与所涉包名），并在回答末尾给出该文件路径。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
             if [ -s "$art_file" ]; then
                 echo "$(date +%F) $art_pkg $art_file" >> "$ARTICLE_TOPIC_LOG"
                 log_info "AI 文章: $art_file"
+                publish_article_to_wechat "$art_file" "$art_pkg"
             else
                 # 不把噪声写进 docs/：失败输出另存 logs/
                 sed 's/\x1b\[[0-9;]*m//g' "$LOG_DIR/opencode-$task_id.log" > "$LOG_DIR/article-failed-$task_id.md" 2>/dev/null || true
@@ -761,6 +988,18 @@ EOFPLAN
                 call_opencode "请执行以下计划内容：$plan_content" "$task_id" || exit_code=$?
             else
                 call_opencode "请执行以下计划：$task_data" "$task_id" || exit_code=$?
+            fi
+            ;;
+        "autopost")
+            # 社交推广发布（task_data = qzone|douyin），实现见 automation/autopost/
+            if [ "$AUTOPOST_MODE" = "off" ]; then
+                log_info "autopost($task_data): AUTOPOST_MODE=off，跳过"
+            elif [ "$AUTOPOST_MODE" = "dry-run" ]; then
+                timeout 1800 node "$WORK_DIR/automation/autopost/bin/post-once.mjs" "$task_data" --dry-run \
+                    >> "$LOG_DIR/autopost.log" 2>&1 || exit_code=$?
+            else
+                timeout 1800 node "$WORK_DIR/automation/autopost/bin/post-once.mjs" "$task_data" \
+                    >> "$LOG_DIR/autopost.log" 2>&1 || exit_code=$?
             fi
             ;;
         *)
@@ -1040,6 +1279,60 @@ expire_old_plans() {
 
 # ---- 文章题材选取（每日 05:00 文章任务）----
 ARTICLE_TOPIC_LOG="$WORK_DIR/logs/article-topics.log"
+WECHAT_PUBLISH_LOG="$LOG_DIR/wechat-publish.log"
+
+# 文章生成后转公众号草稿/发布。失败不影响文章任务本身（文章已落盘）。
+publish_article_to_wechat() {
+    local md=$1 pkg=$2
+    local mode="$WECHAT_ARTICLE_MODE"
+    [ "$mode" = "off" ] && return 0
+
+    local mode_args=()
+    case "$mode" in
+        dry-run) mode_args=(--dry-run) ;;
+        draft)   ;;
+        publish) mode_args=(--publish) ;;
+        *) log_warn "未知 WECHAT_ARTICLE_MODE=$mode，按 off 处理"; return 0 ;;
+    esac
+
+    local relay_args=()
+    [ -n "${WECHAT_RELAY_HOST:-}" ] && relay_args=(--remote "$WECHAT_RELAY_HOST")
+
+    # 经跳板机时凭据在跳板机的 server/.env 里，本机不需要
+    if [ "$mode" != "dry-run" ] && [ -z "${WECHAT_RELAY_HOST:-}" ] &&
+       { [ -z "${WECHAT_APPID:-}${WX_MP_APPID:-}" ] || [ -z "${WECHAT_APPSECRET:-}${WX_MP_SECRET:-}" ]; }; then
+        log_warn "公众号发布跳过：未配置 WECHAT_APPID/WECHAT_APPSECRET（文章已保留）"
+        echo "$(date +%F) $pkg skip:no-credentials" >> "$WECHAT_PUBLISH_LOG"
+        return 0
+    fi
+
+    # 构建产物放 logs/（不污染 docs 仓库）
+    local build_dir="$LOG_DIR/wechat/$(date +%Y%m%d)-$pkg"
+    mkdir -p "$build_dir"
+
+    local out media_id
+    if out=$(bash "$WORK_DIR/automation/wechat/publish.sh" "$md" \
+                 --build-dir "$build_dir" \
+                 ${relay_args[@]+"${relay_args[@]}"} \
+                 ${mode_args[@]+"${mode_args[@]}"} 2>&1); then
+        if [ "$mode" = "dry-run" ]; then
+            log_info "公众号发布预检通过（dry-run，未联网，产物 $build_dir）"
+            echo "$(date +%F) $pkg dry-run ok $build_dir" >> "$WECHAT_PUBLISH_LOG"
+            return 0
+        fi
+        media_id=$(printf '%s\n' "$out" | grep -o 'media_id = [A-Za-z0-9_-]*' | tail -1 | awk '{print $3}')
+        if [ "$mode" = "publish" ]; then
+            log_info "公众号已发布: ${media_id:-unknown}（mode=publish, 产物 $build_dir）"
+        else
+            log_info "公众号草稿已创建: ${media_id:-unknown}（mode=$mode, 产物 $build_dir）"
+        fi
+        echo "$(date +%F) $pkg $mode ${media_id:-ok} $build_dir" >> "$WECHAT_PUBLISH_LOG"
+    else
+        log_error "公众号草稿创建失败（文章已保留）: $(printf '%s' "$out" | tail -3 | tr '\n' ' ')"
+        echo "$(date +%F) $pkg $mode failed $build_dir" >> "$WECHAT_PUBLISH_LOG"
+    fi
+    return 0
+}
 
 pick_article_pkg() {
     local all used cand

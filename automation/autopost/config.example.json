@@ -1,0 +1,21 @@
+{
+  "qzone": {
+    "profileDir": "state/profiles/qzone"
+  },
+  "douyin": {
+    "web": {
+      "stateFile": "state/douyin-web.json"
+    },
+    "api": {
+      "appKey": "",
+      "appSecret": "",
+      "redirectUri": "http://localhost:8080/callback",
+      "tokenFile": "state/douyin-token.json",
+      "scope": "user_info,video.create"
+    }
+  },
+  "schedule": [
+    { "platform": "qzone", "cron": "0 9 * * *", "queueDir": "queue/qzone" },
+    { "platform": "douyin", "cron": "10 20 * * *", "queueDir": "queue/douyin", "mode": "auto" }
+  ]
+}

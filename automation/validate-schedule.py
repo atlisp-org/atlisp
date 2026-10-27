@@ -13,6 +13,8 @@ ALLOWED_TYPES = {
     "ai-compare", "ai-explain", "ai-refactor-batch", "ai-generate-pkg",
     "ai-fix-all", "ai-execute-plan", "ai-self-review", "ai-introspect",
     "ai-agent-optimize",
+    # 社交推广发布（QQ空间/抖音），task_data 为平台名，实现见 automation/autopost/
+    "autopost",
 }
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DAYS_RE = re.compile(

@@ -1,0 +1,35 @@
+[Unit]
+Description=@lisp autopost 推广发布服务（QQ空间常驻守护进程 + 二维码服务）
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=vitalgg
+Group=vitalgg
+WorkingDirectory=/home/vitalgg/atlisp/automation/autopost
+ExecStart=/home/vitalgg/atlisp/automation/autopost/run.sh
+Restart=always
+RestartSec=15
+
+# 环境变量
+Environment=HOME=/home/vitalgg
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=autopost
+
+# 资源限制（常驻 Chromium 页面较重，留足余量）
+MemoryMax=1.5G
+CPUQuota=60%
+
+# 安全加固
+NoNewPrivileges=true
+ReadWritePaths=/home/vitalgg/atlisp/automation/autopost /tmp
+
+[Install]
+WantedBy=multi-user.target

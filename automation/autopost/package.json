@@ -1,0 +1,20 @@
+{
+  "name": "autopost",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "QQ空间 + 抖音 自动化内容发布（Playwright 网页自动化 + 抖音开放平台官方 API）",
+  "scripts": {
+    "qzone-login": "node bin/qzone-login.js",
+    "qzone-post": "node bin/qzone-post.js",
+    "douyin-oauth": "node bin/douyin-oauth.js",
+    "douyin-web-login": "node bin/douyin-web-login.js",
+    "douyin-publish": "node bin/douyin-publish.js",
+    "schedule": "node bin/schedule.js",
+    "install:browser": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "playwright": "^1.53.0"
+  }
+}
