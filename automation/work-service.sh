@@ -873,6 +873,7 @@ EOFPLAN
   - 保持 schema：version / grace_seconds / tasks[]；每项含 id,name,type,time,priority,days,enabled（可选 data/dynamic）
   - time 为 HH:MM；priority 为 1-5 整数；days 为 * / 1-7 / dom:DD；type 必须为现有任务类型
   - 必须保留 id=self-review 与 id=introspection 且均 enabled=true；不得清空任务
+  - 必须保留全部 id 以 autopost- 开头的任务（社交推广自动发布，核心业务任务，勿删勿禁用；可调整其 time/days）
   - 仅做有依据的最小改动；若无调整必要，请不要生成该文件
 【边界】时间预算约 45 分钟，优先完成【输出1】报告写盘。本任务只做分析与调度建议：禁止修改任何代码/脚本/配置文件（work-service.sh、automation/*.sh、agent、lib、packages、kernel 等一律不改）；发现的代码问题写入报告作为建议，交由对应任务处理。
 最后在回答末尾给出报告路径。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
