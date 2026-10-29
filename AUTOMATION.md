@@ -124,6 +124,24 @@ make all
 - AI 报告有效性按「非空 + mtime ≥ 本次任务开始」判定；未写出报告时回退只写
   `*.attempt-fallback.bak`，不覆盖正式报告路径（防止残留转储被误判为成功）
 - AI 任务超时按即败型处理（同 prompt 重试大概率再超时，直接归档失败 + 邮件告警）
+- opencode 集成（v2.0.29）：每次 `opencode run` 预分配会话 ID（`--session ses_worker_<task>_<ns>`）
+  并带 `--title worker-<task>-<ts>`；超时/停服时 kill 进程组后按 ID 删除服务端会话，避免
+  「客户端已杀、服务端继续生成」的孤儿会话与孤儿产物。异常退出（SIGKILL/断电）遗留的
+  `logs/oc-*.sid` 会在下次启动时按 ID 清理
+- `--format json` 解析事件流：只把 `text` 事件写入 `logs/opencode-<task>.log`（无 ANSI/TUI 噪声，
+  ai-plan 直接拿到干净内容）；`tool_use` 汇总工具调用；`step_finish` 统计 token/费用并追加到
+  `logs/opencode-usage.jsonl`；`error` 给出结构化错误类型，便于区分模型不可用/鉴权/网络故障
+- 超长提示词（>100KB）改用 `--file` 附件传入，省掉模型先 read 文件的往返
+- CLI 能力自动降级：启动预检 `--format` / `--session` / `--file`，老版本缺参数时退回纯文本
+  解析、标题查找清理与「先读文件」提示，不会因升级直接失效
+- 可选 `OPENCODE_MODEL` / `OPENCODE_AGENT`（写进 `/etc/atlisp/atlisp-worker.env`）固定自动化
+  使用的模型/agent；不设则用 `~/.config/opencode/opencode.json` 的默认值
+- 夜间廉价模型：窗口（默认 18:05 → 次日 08:30，`NIGHT_START`/`NIGHT_END` 可调，HH:MM
+  支持跨零点，start 含 end 不含）内启动的 AI 任务自动改用 `NIGHT_MODEL`（默认
+  `deepseek/deepseek-flash`）降成本；self-review（06:00）也在窗口内，introspection（09:00）
+  与 08:30-18:05 白天时段的临时任务用默认模型。置空 `NIGHT_MODEL` 即关闭；
+  实际使用的模型会记录在 `logs/worker.log` 的 `Calling opencode (model=…)` 与
+  `logs/opencode-usage.jsonl` 的 `model` 字段
 
 work-service.sh 使用的任务类型（schedule.json 的 `type` 字段）：
 `sync`、`lint`、`optimize`、`generate`、`docs`、`clean`、`full-check`
@@ -184,6 +202,16 @@ worker 的 `grace_seconds` 补跑机制与 fcron 的"错过后开机补执行"�
 | `check-vllm.sh` | 本地 vllm 服务就绪检查（`check` / `wait`） |
 | `smart-scheduler.sh` | 独立任务队列调度器（备选，生产用 worker） |
 | `install-service.sh` | 安装 systemd 服务与 `/etc/atlisp/atlisp-worker.env`（0600，存 VLLM_API_KEY） |
+| `wechat/publish.sh` | 文章 Markdown → 网页版 + 公众号正文 + 封面，并上传公众号草稿（`--publish` 才直接发布） |
+
+文章发布到公众号（每日 05:00 `ai-article` 之后自动执行）：
+
+- 模式由 `WECHAT_ARTICLE_MODE` 控制：`draft`（默认，只建草稿，人工在后台发表）/ `publish` / `dry-run` / `off`
+- **`publish` 用的是 `freepublish/submit`（发布），不是群发**：文章进「发表记录」、有链接，
+  但不会推到粉丝会话、也不出现在公众号主页「全部消息/文章列表」里 —— 2026-10-30 起改为
+  `draft`，由人工在后台点「群发/发表」，避免出现「发了但列表里看不到」
+- 发布动作经 `WECHAT_RELAY_HOST`（默认 `atlisp.cn`）跳板执行：构建在本机，只有跳板机出口 IP 在公众号白名单内；凭据取跳板机 `~/www/@lisp/server/.env` 的 `WX_MP_APPID`/`WX_MP_SECRET`，不经网络传输
+- 构建产物在 `logs/wechat/<日期>-<包名>/`，结果记录在 `logs/wechat-publish.log`；失败不影响文章任务
 
 常用维护命令：
 ```bash

@@ -91,6 +91,53 @@ export async function shot(page, name) {
   return file;
 }
 
+/** 二维码截图目录（qr-server 对外提供 logs/qrcode/*.png） */
+export const QR_DIR = path.join(ROOT, 'logs', 'qrcode');
+
+/**
+ * 删除二维码截图。二维码 2 分钟就过期，登录流程一结束（成功/失败/超时）
+ * 就删掉，别把过期码留在 qr-server 上被人误扫。
+ * @param {string} [name] 只要删某一个文件；省略则清空目录里的 png
+ * @returns {number} 删除的文件数
+ */
+export function clearQr(name) {
+  try {
+    if (!fs.existsSync(QR_DIR)) return 0;
+    const names = name ? [name] : fs.readdirSync(QR_DIR).filter((n) => n.endsWith('.png'));
+    let n = 0;
+    for (const f of names) {
+      const p = path.join(QR_DIR, f);
+      if (fs.existsSync(p)) {
+        fs.rmSync(p, { force: true });
+        n += 1;
+      }
+    }
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
+/** 清掉超过 maxAgeMs 的旧二维码（进程被杀/上一个流程留下的） */
+export function cleanStaleQr(maxAgeMs = 5 * 60 * 1000) {
+  try {
+    if (!fs.existsSync(QR_DIR)) return 0;
+    const now = Date.now();
+    let n = 0;
+    for (const f of fs.readdirSync(QR_DIR)) {
+      if (!f.endsWith('.png')) continue;
+      const p = path.join(QR_DIR, f);
+      if (now - fs.statSync(p).mtimeMs > maxAgeMs) {
+        fs.rmSync(p, { force: true });
+        n += 1;
+      }
+    }
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * 解析 QQ空间内容文件（queue/qzone/*.txt）
  * 第一行 = 说说文字；以 img: 开头的行 = 图片路径

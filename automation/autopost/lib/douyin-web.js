@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ROOT, loadConfig, abs, launchBrowser, saveState, log, sleep, randomDelay, shot, autoHeadless,
+  clearQr, cleanStaleQr,
 } from './common.js';
 
 const LOGIN_URL = 'https://creator.douyin.com/';
@@ -55,7 +56,17 @@ async function snapQr(page) {
  * 已有登录态且有效时直接复用（无需扫码）。
  * @param {boolean|undefined} [headless] 显式覆盖；缺省时 Linux 无显示环境自动 headless
  */
-export async function douyinWebLogin({ headless } = {}) {
+export async function douyinWebLogin(opts = {}) {
+  // 二维码 2 分钟过期：登录流程一结束（成功/失败/超时）就删掉
+  cleanStaleQr();
+  try {
+    return await douyinWebLoginInner(opts);
+  } finally {
+    if (clearQr('douyin.png')) log('[douyin-web] 已删除二维码截图');
+  }
+}
+
+async function douyinWebLoginInner({ headless } = {}) {
   const cfg = loadConfig().douyin?.web || {};
   const stateFile = abs(cfg.stateFile || 'state/douyin-web.json');
   const hl = autoHeadless(headless);

@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ROOT, loadConfig, abs, launchBrowser, saveState, log, sleep, shot, autoHeadless,
+  clearQr, cleanStaleQr,
 } from './common.js';
 
 const LOGIN_URL = 'https://channels.weixin.qq.com/login.html';
@@ -77,7 +78,17 @@ async function assertNotLogin(page, what) {
  * 视频号扫码登录。登录态存持久化 profile（同 qzone daemon 模式，比 storageState 更稳）。
  * @param {{headless?: boolean}} [p]
  */
-export async function channelsWebLogin({ headless } = {}) {
+export async function channelsWebLogin(opts = {}) {
+  // 二维码 2 分钟过期：登录流程一结束（成功/失败/超时）就删掉，别挂在 qr-server 上
+  cleanStaleQr();
+  try {
+    return await channelsWebLoginInner(opts);
+  } finally {
+    if (clearQr('wechat.png')) log('[channels] 已删除二维码截图');
+  }
+}
+
+async function channelsWebLoginInner({ headless } = {}) {
   const cfg = loadConfig().wechat?.channels?.web || {};
   const profileDir = abs(cfg.profileDir || 'state/profiles/channels');
   const hl = autoHeadless(headless);

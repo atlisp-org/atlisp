@@ -92,13 +92,17 @@ python3 publish_wechat.py --html article-wechat.html --cover assets/cover-thumb.
 
 | 环境变量 | 取值 | 行为 |
 |---|---|---|
-| `WECHAT_ARTICLE_MODE` | `draft`（默认） | 建草稿，人工在后台预览后发表 |
+| `WECHAT_ARTICLE_MODE` | `draft`（默认） | 建草稿，人工在后台预览后群发/发表 |
 | | `publish` | 建草稿并调 `freepublish/submit` 直接发布 |
 | | `dry-run` | 只本地构建+校验，不联网 |
 | | `off` | 不发布，只保留文章 |
 | `WECHAT_APPID` / `WECHAT_APPSECRET` | — | **本机直连**时使用（`WECHAT_RELAY_HOST` 为空）；也接受 `WX_MP_APPID` / `WX_MP_SECRET` |
 | `WECHAT_RELAY_HOST` | 默认 `atlisp.cn` | 发布动作经该跳板机执行（构建仍在本机），凭据用跳板机 `~/www/@lisp/server/.env` 的 `WX_MP_APPID/WX_MP_SECRET`；置空则本机直连 |
 
+- **`--publish` 是「发布」(freepublish)，不是「群发」(mass/sendall)**：文章会进后台「发表记录」、
+  有永久链接，但**不会**推到粉丝会话，也不会出现在公众号主页的「全部消息 / 文章列表」里。
+  要让读者能在列表里看到，必须在后台点「群发」（订阅号每天 1 次额度）——这也是默认保持
+  `draft` 的原因：建好草稿，人工确认后群发
 - 跳板机模式只上传 `<文章>-wechat.html`、`cover-thumb.jpg` 和 `publish_wechat.py`（仅标准库），临时目录 `/tmp/atlisp-wx-*` 用完即删
 - 本机直连时也可以直接用 `WX_MP_APPID` / `WX_MP_SECRET`（与服务端 .env 同名）
 - 构建产物写到 `logs/wechat/<日期>-<包名>/`（不污染 `docs/` 仓库）

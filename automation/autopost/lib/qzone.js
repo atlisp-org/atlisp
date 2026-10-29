@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ROOT, loadConfig, abs, launchBrowser, log, sleep, randomDelay, shot, autoHeadless,
+  clearQr, cleanStaleQr,
 } from './common.js';
 
 const HOME_URL = 'https://qzone.qq.com/';
@@ -118,7 +119,17 @@ async function snapQr(page) {
  * 已有登录态且有效时直接复用（无需扫码）。
  * @param {boolean|undefined} [headless] 显式覆盖；缺省时 Linux 无显示环境自动 headless
  */
-export async function qzoneLogin({ headless } = {}) {
+export async function qzoneLogin(opts = {}) {
+  // 二维码 2 分钟过期：登录流程一结束（成功/失败/超时）就删掉
+  cleanStaleQr();
+  try {
+    return await qzoneLoginInner(opts);
+  } finally {
+    if (clearQr('qzone.png')) log('[qzone] 已删除二维码截图');
+  }
+}
+
+async function qzoneLoginInner({ headless } = {}) {
   const cfg = loadConfig().qzone || {};
   const profileDir = profileDirOf(cfg);
   const marker = readMarker(profileDir);

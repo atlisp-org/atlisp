@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ROOT, abs, launchBrowser, log, sleep, randomDelay, shot, autoHeadless,
+  clearQr, cleanStaleQr,
 } from './common.js';
 
 const HOME_URL = 'https://qzone.qq.com/';
@@ -163,6 +164,16 @@ export class QzoneSession {
 
   /** 扫码登录（headless：QR 存 logs/qrcode/qzone.png，每 75 秒重载页面换新码） */
   async _qrLogin() {
+    cleanStaleQr();
+    try {
+      await this._qrLoginInner();
+    } finally {
+      // 二维码 2 分钟过期：成功/失败/超时都删掉，避免过期码留在 qr-server 上
+      if (clearQr('qzone.png')) log('[qzone-session] 已删除二维码截图');
+    }
+  }
+
+  async _qrLoginInner() {
     if (fs.existsSync(markerOf(this.profileDir))) fs.unlinkSync(markerOf(this.profileDir));
     log('[qzone-session] 需要扫码登录，生成二维码...');
     await sleep(2000);
