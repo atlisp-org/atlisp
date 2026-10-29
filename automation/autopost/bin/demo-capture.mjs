@@ -16,7 +16,7 @@
 // 失败一律 exit 1（调用方回退到纯 6 屏版式，不影响发布）。
 //
 // 用法:
-//   node bin/demo-capture.mjs [--pkg at-arch] [--sec 12] [--out media/demo-at-arch.mp4] [--keep]
+//   node bin/demo-capture.mjs [--pkg at-arch] [--sec 16] [--out media/demo-at-arch.mp4] [--keep]
 // 环境变量: DEMO_HOST（Linux 侧 IP，默认 192.168.1.100）、DEMO_PORT（默认 8126）、
 //           DEMO_WORK_DIR（默认 /tmp/opencode/demo-frames）、MCP_CAD_URL
 import { execFileSync } from 'node:child_process';
@@ -48,7 +48,7 @@ function arg(name, def) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
 }
 const PKG = arg('pkg', 'at-arch');
-const SEC = Number(arg('sec', '12'));
+const SEC = Number(arg('sec', '18'));
 const OUT = path.resolve(arg('out', path.join(ROOT, 'media', `demo-${PKG}-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.mp4`)));
 const KEEP = process.argv.includes('--keep');
 
@@ -167,7 +167,7 @@ async function prep(cad) {
   (@::set-config '@arch:parking-number-order "snake")
   (@::set-config '@arch:parking-number-att "*NUMBER*")
   (@::set-config '@arch:parking-row-tol 1200)
-  (@::set-config '@arch:parking-min-row 2)
+  (@::set-config '@arch:parking-min-row 5)
   (setq *demo-ents nil)
   (setvar "TILEMODE" 1)
   (setq app (vlax-get-acad-object))
@@ -197,6 +197,23 @@ async function prep(cad) {
                   (progn (entdel (vlax-vla-object->ename ins0)) "BLK-CREATED")))))))`, 'ENSURE-BLOCK');
   if (!b || !(b.startsWith('BLK-EXISTS') || b.startsWith('BLK-CREATED'))) fail(`块定义不可用 (${b})`);
 
+  // 放大编号字高（原 ATTDEF 字高 350，缩到成片里只剩 ~14px 看不清；演示图纸设 900）
+  const th = await ev(cad, `(progn
+  (vl-load-com)
+  (setq cname (strcat (chr ${CH_CHE}) (chr ${CH_WEI})))
+  (setq blk (tblobjname "BLOCK" cname))
+  (setq se (cdr (assoc -2 (entget blk))))
+  (setq n 0)
+  (while se
+    (setq d (entget se))
+    (if (= "ATTDEF" (cdr (assoc 0 d)))
+        (progn
+          (setq d2 (subst (cons 40 900.0) (assoc 40 d) d))
+          (if (entmod d2) (setq n (1+ n)))))
+    (setq se (entnext se)))
+  (strcat "TEXT-H=" (itoa n)))`, 'BLOCK-TEXT');
+  if (!th || !th.startsWith('TEXT-H=1')) fail(`编号字高设置失败 (${th})`);
+
   // 自检：识别 + 属性
   const c = await ev(cad, `(progn
   (vl-load-com)
@@ -213,17 +230,48 @@ async function prep(cad) {
 }
 
 // ---------- 3. 插入块 ----------
+// 100 个车位：4 排 × 25 列，两排一组「相对布置」（中间 6000 宽车道），相邻两组「背靠背」。
+// 相对的那一排整体转 180°（开口朝车道），再把它的属性文字转回 0°，编号始终正着看。
+//   row0  y=0        rot 0    占据 y[-5300, 0]
+//   ── 车道 6000 ──
+//   row1  y=-16600   rot 180  占据 y[-16600, -11300]  ← 与 row0 相对
+//   row2  y=-16600   rot 0    占据 y[-21900, -16600]  ← 与 row1 背靠背
+//   ── 车道 6000 ──
+//   row3  y=-33200   rot 180  占据 y[-33200, -27900]  ← 与 row2 相对
+const BW = 2400, BH = 5300;          // 车位块包围盒（插入点在上边中点）
+const COLS = 25;                     // 每排 25 个
+const COL_STEP = 2500;               // 2400 宽 + 100 缝
+const ROWS = [
+  { y: 0, rot: 0 },
+  { y: -16600, rot: 180 },
+  { y: -16600, rot: 0 },
+  { y: -33200, rot: 180 },
+];
 const GRID = [];
-for (let col = 0; col < 5; col++) GRID.push([col * 3000, 0]);   // 一排 5 个车位：编号在成片里可辨认
+for (const r of ROWS) {
+  for (let col = 0; col < COLS; col++) GRID.push({ x: col * COL_STEP, y: r.y, rot: r.rot });
+}
 
-async function insertOne(cad, x, y) {
+// 一整排一次插完（25 个），画面上一排一排出现
+async function insertRow(cad, row) {
+  const rad = row.rot === 0 ? '0.0' : '3.14159265358979';
   return ev(cad, `(progn
   (vl-load-com)
   (setq ms (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))))
-  (setq ins (vla-insertblock ms (apply 'vlax-3d-point (list ${x}.0 ${y}.0 0.0))
-                             (strcat (chr ${CH_CHE}) (chr ${CH_WEI})) 1.0 1.0 1.0 0.0))
-  (setq *demo-ents (cons (vlax-vla-object->ename ins) *demo-ents))
-  "INS-OK")`, `INS ${x},${y}`, 60000);
+  (setq nm (strcat (chr ${CH_CHE}) (chr ${CH_WEI})))
+  (setq i 0)
+  (while (< i ${COLS})
+    (setq ins (vla-insertblock ms
+                (apply 'vlax-3d-point (list (* i ${COL_STEP}.0) ${row.y}.0 0.0))
+                nm 1.0 1.0 1.0 ${rad}))
+    (if (= ${row.rot === 0 ? 0 : 1} 1)
+        (progn
+          (setq ra (vl-catch-all-apply 'vlax-invoke (list ins 'GetAttributes)))
+          (setq al (if (= 'safearray (type ra)) (vl-safearray->list ra) ra))
+          (foreach at al (vla-put-Rotation at 0.0))))
+    (setq *demo-ents (cons (vlax-vla-object->ename ins) *demo-ents))
+    (setq i (1+ i)))
+  (strcat "ROW-OK=" (itoa (length *demo-ents))))`, `INS row y=${row.y}`, 120000);
 }
 
 // ---------- 4. 抓屏 PS1 ----------
@@ -371,20 +419,31 @@ try {
   await prep(cad);
 
   const zipName = `frames-${stamp()}.zip`;
-  // 先把视图定到车位区域（块 2400x5300：x 每加 1 个 +3000，首块 x∈[-1200,1200]、y∈[-5300,0]）
-  const minX = -1200, maxX = (GRID.length - 1) * 3000 + 1200;
-  const zcx = (minX + maxX) / 2, zcy = -2650, zhh = Math.round(5300 * 1.19);
-  await ev(cad, `(progn (command "_.ZOOM" "C" (list ${zcx}.0 ${zcy}.0 0.0) ${zhh}) "OK")`, 'ZOOM-INIT');
+  // 先把视图定到车位区域（按网格包围盒算中心与高度，块 2400x5300，转 180° 的排向上长）
+  const minX = Math.min(...GRID.map((g) => g.x)) - BW / 2;
+  const maxX = Math.max(...GRID.map((g) => g.x)) + BW / 2;
+  const minY = Math.min(...GRID.map((g) => (g.rot ? g.y : g.y - BH)));
+  const maxY = Math.max(...GRID.map((g) => (g.rot ? g.y + BH : g.y)));
+  const zcx = (minX + maxX) / 2, zcy = (minY + maxY) / 2;
+  const zhh = Math.round((maxY - minY) * 1.08);
+  // 注意：ZOOM C 在高度 >4 万时会把 CAD 挂住（实测），统一用 ZOOM W（窗口按绘图区 2.2 比例）
+  const zoomWin = (cx, cy, h) => {
+    const w = h * 2.2;
+    return `(progn (vl-cmdf "_.ZOOM" "W" (list ${(cx - w / 2).toFixed(2)} ${(cy - h / 2).toFixed(2)} 0.0)`
+      + ` (list ${(cx + w / 2).toFixed(2)} ${(cy + h / 2).toFixed(2)} 0.0)) "OK")`;
+  };
+  await ev(cad, zoomWin(zcx, zcy, zhh), 'ZOOM-INIT');
   log(`启动抓屏 PS1（${SEC}s）`);
   await ps1(cad, captureScript(zipName, SEC), 'CAPTURE-START');
 
   // 抓屏已在跑：开始画面动作
-  await sleep(1200);
-  log(`插入 ${GRID.length} 个车位块`);
-  for (let i = 0; i < GRID.length; i++) {
-    const r = await insertOne(cad, GRID[i][0], GRID[i][1]);
-    if (i === 0 && (!r || r !== 'INS-OK')) fail(`首块插入失败 (${r})`);
-    await sleep(1400);
+  await sleep(800);
+  for (let r = 0; r < ROWS.length; r++) {
+    log(`插入第 ${r + 1}/${ROWS.length} 排（${COLS} 个车位，rot ${ROWS[r].rot}）`);
+    const res = await insertRow(cad, ROWS[r]);
+    if (r === 0 && (!res || !res.startsWith('ROW-OK='))) fail(`首排插入失败 (${res})`);
+    if (!res || !res.startsWith('ROW-OK=')) fail(`第 ${r + 1} 排插入失败 (${res})`);
+    await sleep(1800);
   }
 
   log('清空编号属性（对比更明显）');
@@ -395,8 +454,14 @@ try {
   log(`  已编号 ${n} 个车位`);
 
   log('缩放到全图');
-  await ev(cad, '(progn (command "_.ZOOM" "E") (command "_.REGEN") "OK")', 'ZOOM-E');
+  await ev(cad, zoomWin(zcx, zcy, zhh), 'ZOOM-WIDE');
   await cad.callTool('bring_to_front', {}).catch(() => {});
+  await sleep(1000);
+
+  // 片尾停在局部特写：第一组「相对布置」（row0 + row1 跨车道面对面），
+  // 编号 43px 抓屏 → 成片 ~22px，正反向都看得清。抓屏自然结束在这里。
+  log('局部放大到第一组相对车位（片尾定格）');
+  await ev(cad, zoomWin(10000, -8300, 18000), 'ZOOM-DETAIL');
 
   log('等抓屏结束 + 上传');
   const zip = await waitZip(120000);

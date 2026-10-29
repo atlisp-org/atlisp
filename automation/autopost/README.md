@@ -80,10 +80,16 @@ call_opencode                AI 读 packages/<包>/ 素材，写出文案 JSON�
 demo-capture.mjs（仅 at-arch）实拍演示（失败自动跳过，不影响发布）：
                              ① PS1 把 车位.dwg 复制成 ASCII 名 che-wei.dwg
                              ② 当前图纸打 at-arch 配置 + 确保块名「车位」存在
-                             ③ GDI+ 抓屏 14s，边抓边插 5 个车位块
-                             ④ (at-arch:ai-parking-number 1 nil) 真实编号
-                             ⑤ 帧 zip 回传 Linux → ffmpeg 合成 9:16 片段 → media/demo-*.mp4
-                             ⑥ 成功后把 demo 字段注入文案 JSON（走 8 屏版式）
+                             ③ GDI+ 抓屏 18s，边抓边插 100 个车位块（4 排 × 25 列，
+                                两排一组跨 6000 宽车道「相对布置」，相邻两组背靠背；
+                                相对的那排整体转 180°，属性文字再转回 0° 保持正向）
+                             ④ 编号字高调到 900（原 350 缩进成片只有 ~14px，看不清）
+                             ⑤ (at-arch:ai-parking-number 1 nil) 真实编号（4 排蛇形：
+                                1-25 左到右 / 26-50 右到左 / 51-75 左到右 / 76-100 右到左）
+                             ⑥ 全景停留 → 局部特写（第一组相对车位，编号 43px 抓屏 ≈ 22px 成片）
+                                → 片尾定格在特写
+                             ⑦ 帧 zip 回传 Linux → ffmpeg 合成 9:16 片段 → media/demo-*.mp4
+                             ⑧ 成功后把 demo 字段注入文案 JSON（走 8 屏版式）
         │
 gen-content.py               确定性渲染：
                              ① Pillow 画 1080×1920 竖版画面（品牌深蓝底）
@@ -100,7 +106,7 @@ autopost-douyin (16:00)
 
 - 当日同一包重复生成会自动跳过（文件已存在）
 - 手动跑：`python3 bin/gen-content.py --pkg <包名> --copy <文案.json> [--force] [--root <测试目录>]`
-- 手动录实拍：`node bin/demo-capture.mjs --pkg at-arch [--sec 14] [--keep]`
+- 手动录实拍：`node bin/demo-capture.mjs --pkg at-arch [--sec 18] [--keep]`（--keep 保留 CAD 里的块，便于读回验证）
 - 依赖：`python3 + Pillow`（画面渲染）、`ffmpeg`（合成，无需 drawtext）、`unzip`/`identify`（ImageMagick）
 - 实拍是**尽力而为**：CAD 不可用 / 图纸非空 / 屏幕锁屏（抓出来全黑，亮度守卫拦截）→ 自动回退 6 屏，发布不受影响
 
@@ -117,6 +123,10 @@ MCP 的 `eval_lisp_with_result` 用 `(progn (setq f (open 结果文件 "w")) (se
   `@arch:parking-blk` 的识别规则；属性 tag 用 `vla-get-TagString`（不是 `vla-get-Tag`）
 - 单次 eval 的代码（含 base64）别超约 5000 字符，超了报「输入的字符串太长」；PS1 请拆短
 - `command` 不能 `vl-catch-all-apply`，要用 `vl-cmdf`
+- **ZOOM C 在高度 >4 万时会把 CAD 挂住**（`cad.stalled`，之后 `send_esc` 才恢复）；
+  需要精确定位一律用 `ZOOM W`（窗口两点，按绘图区 2.2 比例算），别用 `ZOOM C`
+- 块插成 180° 后，属性的 `vla-get-Rotation` 会跟着变成 3.14（绝对角度，不是相对），
+  文字会倒过来；插完对每个属性 `(vla-put-Rotation at 0.0)` 就正回来了
 
 
 ## 安装
