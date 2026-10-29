@@ -479,7 +479,12 @@ export async function channelsWebPublish({ video, title = '', desc = '', dryRun 
     log('[channels] 上传完成，开始填写信息');
 
     // 短标题（清洗特殊符号，否则触发「标题包含特殊字符」拦截发表）
-    const safeTitle = sanitizeTitle(title);
+    // 平台短标题上限 16 字（2026-10-28 实测超限报「标题超过16字限制」），超长截断兜底
+    let safeTitle = sanitizeTitle(title);
+    if (safeTitle && safeTitle.length > 16) {
+      safeTitle = safeTitle.slice(0, 16);
+      log('[channels] 短标题超 16 字已截断: ' + JSON.stringify(safeTitle));
+    }
     if (safeTitle) {
       if (safeTitle.length < 6) {
         throw new Error('短标题不足 6 字（平台要求至少 6 字）: ' + JSON.stringify(safeTitle));
