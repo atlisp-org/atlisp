@@ -38,6 +38,9 @@ autopost/
 │   ├── qzone-post.js     # QQ空间发一条（走守护进程）
 │   ├── post-once.mjs     # 单发入口（atlisp-worker 调度调用：取队列第一个文件发布）
 │   ├── gen-content.py    # 内容生成（AI 文案 → Pillow 渲染竖版视频 → 写入队列）
+│   ├── gen-bgm.py        # BGM 合成（欢快风格，media/bgm.wav 共享复用）
+│   ├── demo-capture.mjs  # 实拍演示录制（CAD 真实操作 + 抓屏 → 9:16 片段）
+│   ├── make-demo-bg.py   # 实拍片段品牌底图（Pillow）
 │   ├── douyin-oauth.js   # 抖音开放平台 OAuth 授权
 │   ├── douyin-web-login.js # 创作者平台扫码登录（兜底通道）
 │   ├── douyin-publish.js # 抖音发一个视频（自动选通道 A/B）
@@ -70,12 +73,23 @@ pick_autopost_pkg()          轮换挑一个应用包（logs/autopost-topics.log
                              与微信文章题材独立轮换，近 60 条不重复）
         │
 call_opencode                AI 读 packages/<包>/ 素材，写出文案 JSON：
-                             { qzone: 说说的文字, title: 抖音标题,
-                               topics: 话题[], slides: 4 屏视频文案[] }
+                             { qzone: 说说的文字, title: 抖音标题, topics: 话题[],
+                               command: 真实入口命令（优先 ai- 无交互入口）,
+                               slides: 5 项[钩子/痛点/效果/收益1/收益2] }
+        │
+demo-capture.mjs（仅 at-arch）实拍演示（失败自动跳过，不影响发布）：
+                             ① PS1 把 车位.dwg 复制成 ASCII 名 che-wei.dwg
+                             ② 当前图纸打 at-arch 配置 + 确保块名「车位」存在
+                             ③ GDI+ 抓屏 14s，边抓边插 5 个车位块
+                             ④ (at-arch:ai-parking-number 1 nil) 真实编号
+                             ⑤ 帧 zip 回传 Linux → ffmpeg 合成 9:16 片段 → media/demo-*.mp4
+                             ⑥ 成功后把 demo 字段注入文案 JSON（走 8 屏版式）
         │
 gen-content.py               确定性渲染：
-                             ① Pillow 画 4 屏 1080×1920 竖版画面（品牌深蓝底）
-                             ② ffmpeg xfade 合成 ~10s 短视频 → media/
+                             ① Pillow 画 1080×1920 竖版画面（品牌深蓝底）
+                             ② ffmpeg xfade 合成短视频 → media/
+                                · 无 demo：6 屏（钩子/痛点/命令/效果/收益/CTA）~16.7s
+                                · 有 demo：8 屏（钩子/痛点/命令/实拍/效果/收益1/收益2/CTA）~24s
                              ③ 写队列 queue/qzone/<日期>-<包>.txt（含首屏配图）
                                 queue/douyin/<日期>-<包>.json
         │
@@ -85,8 +99,25 @@ autopost-douyin (16:00)
 ```
 
 - 当日同一包重复生成会自动跳过（文件已存在）
-- 手动跑：`python3 bin/gen-content.py --pkg <包名> --copy <文案.json>`
-- 依赖：`python3 + Pillow`（画面渲染）、`ffmpeg`（合成，无需 drawtext）
+- 手动跑：`python3 bin/gen-content.py --pkg <包名> --copy <文案.json> [--force] [--root <测试目录>]`
+- 手动录实拍：`node bin/demo-capture.mjs --pkg at-arch [--sec 14] [--keep]`
+- 依赖：`python3 + Pillow`（画面渲染）、`ffmpeg`（合成，无需 drawtext）、`unzip`/`identify`（ImageMagick）
+- 实拍是**尽力而为**：CAD 不可用 / 图纸非空 / 屏幕锁屏（抓出来全黑，亮度守卫拦截）→ 自动回退 6 屏，发布不受影响
+
+### 实拍演示的 LISP 注意事项（踩过的坑）
+
+MCP 的 `eval_lisp_with_result` 用 `(progn (setq f (open 结果文件 "w")) (setq r (vl-catch-all-apply ...)) (princ r f))`
+包装用户代码 —— **`f` 和 `r` 是保留变量**。用户代码里 `(setq f ...)` 会覆盖文件句柄，
+表现为「eval 返回空字符串」（结果文件没写成）。此前排查很久的「FSO 读文件返回空」也是同一个原因。
+
+其他约束：
+- 中文一律用 Unicode 码点构造：`(chr 36710)`=车、`(chr 20301)`=位（ACAD 2018+ 内部 UCS-2；
+  用 GBK 字节 `(chr 179)...` 构造是错的，findfile 找不到）
+- 从文件插块时块名 = 文件名（ASCII 名 → 块名 `che-wei`），要 `(vla-put-Name blkobj 车位)` 才符合
+  `@arch:parking-blk` 的识别规则；属性 tag 用 `vla-get-TagString`（不是 `vla-get-Tag`）
+- 单次 eval 的代码（含 base64）别超约 5000 字符，超了报「输入的字符串太长」；PS1 请拆短
+- `command` 不能 `vl-catch-all-apply`，要用 `vl-cmdf`
+
 
 ## 安装
 

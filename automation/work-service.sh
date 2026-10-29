@@ -1022,13 +1022,34 @@ EOFPLAN
   \"qzone\": \"QQ空间说说正文：80~180字，口语化，包含 1 个真实使用场景 + 1 个实际命令，结尾一句收益；可带 1~2 个 #话题# 标签；不要硬广口吻、不要外链和二维码\",
   \"title\": \"抖音标题：15~30字，有钩子（痛点/反差/数字），不夸大\",
   \"topics\": [\"话题1\", \"话题2\", \"话题3\"],
-  \"slides\": [\"第1屏\", \"第2屏\", \"第3屏\", \"第4屏\"]
+  \"command\": \"该包真实入口命令（如 (at-arch:ai-parking-number 1 nil)），必须逐字取自包源码，≤40 字符\",
+  \"slides\": [\"第1屏 钩子\", \"第2屏 痛点\", \"第4屏 效果\", \"第5屏 收益1\", \"第5屏 收益2\"]
 }
 - topics：3~5 个，选平台真实存在的垂类话题（如 AutoCAD、CAD插件、AutoLISP、工程效率 等），不要生造
-- slides：竖版短视频的屏文案，4 屏，每屏 ≤16 个汉字；第1屏是钩子，第2~3屏是痛点/方案，第4屏收束（可含 atlisp.cn）
+- command：必须是该包 pkg.lsp/主 .lsp 里真实存在的入口命令（用户实际输入的那条），禁止编造；
+  **优先选无交互的 ai- 入口**（形如 (ns:ai-xxx 参数…)）——实拍演示会在 CAD 里真实执行这条命令，
+  交互命令（弹窗/等鼠标）会导致录制卡住；没有 ai- 入口时才用普通命令
+- slides：恰好 5 项，竖版短视频屏文案（第3屏命令屏由 command 字段自动生成，无需写）：
+  第1屏钩子 ≤14 字；第2屏痛点（具体场景）≤16 字；第4屏跑完命令后的效果 ≤16 字；第5屏两条短收益各 ≤12 字
 【要求】中文；命令名/函数名必须来自该包真实内容；不要提及抖音/公众号/微信等其他平台；不要虚假承诺。
 完成后确认文件已写入，并在回答末尾输出该文件路径。" "$task_id" "$AI_LONG_TASK_TIMEOUT" || exit_code=$?
                     if [ -s "$ap_copy" ]; then
+                        # 实拍演示（目前只有 at-arch 有录屏脚本）：成功则把 demo 字段注入 copy.json，
+                        # 走 8 屏实拍版式；失败/超时/画面异常则保持 6 屏，不影响发布。
+                        if [ "$ap_pkg" = "at-arch" ]; then
+                            local ap_demo
+                            ap_demo="$AUTOPOST_DIR/media/demo-$ap_pkg-$(date +%Y%m%d).mp4"
+                            if timeout 900 node "$AUTOPOST_DIR/bin/demo-capture.mjs" --pkg "$ap_pkg" \
+                                    --out "$ap_demo" >> "$LOG_DIR/autopost.log" 2>&1 && [ -s "$ap_demo" ]; then
+                                if jq --arg d "media/$(basename "$ap_demo")" '.demo = $d' "$ap_copy" > "$ap_copy.tmp" \
+                                        && mv "$ap_copy.tmp" "$ap_copy"; then
+                                    log_info "autopost-content: 实拍演示已生成（8 屏版式）$ap_demo"
+                                fi
+                            else
+                                rm -f "$ap_demo"
+                                log_warn "autopost-content: 实拍演示失败，回退 6 屏版式"
+                            fi
+                        fi
                         python3 "$AUTOPOST_DIR/bin/gen-content.py" --pkg "$ap_pkg" --copy "$ap_copy" \
                             >> "$LOG_DIR/autopost.log" 2>&1 || exit_code=$?
                         echo "$(date +%F) $ap_pkg" >> "$AUTOPOST_TOPIC_LOG"
