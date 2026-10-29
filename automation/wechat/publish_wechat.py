@@ -15,6 +15,7 @@ Requirements
 * 已认证 订阅号/服务号（个人主体号没有草稿/发布接口权限）
 * `WECHAT_APPID` + `WECHAT_APPSECRET` in the environment
   (后台 → 设置与开发 → 基本配置 → 公众号开发信息)
+  （`WX_MP_APPID` / `WX_MP_SECRET` 作为备选变量名，与 atlisp.cn 服务端 .env 一致）
 * the machine's public IP added to 后台 → 基本配置 → IP 白名单
 
 Usage
@@ -31,11 +32,13 @@ No third-party dependencies (urllib only).
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import mimetypes
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -133,16 +136,38 @@ def submit_publish(token: str, media_id: str) -> dict:
                     content_type="application/json; charset=utf-8")
 
 
+def published_articles(token: str, count: int = 10) -> list[dict]:
+    """已发布文章（最新在前），用于核对发布结果。"""
+    payload = _request(
+        f"{API}/freepublish/batchget?access_token={token}",
+        data=json.dumps({"offset": 0, "count": count, "no_content": 1}).encode("utf-8"),
+        content_type="application/json; charset=utf-8",
+    )
+    out = []
+    for item in payload.get("item", []):
+        news = (item.get("content") or {}).get("news_item") or [{}]
+        out.append({"title": (news[0].get("title") or "").strip(),
+                    "url": news[0].get("url", "")})
+    return out
+
+
+def find_published_by_title(token: str, title: str) -> dict | None:
+    for article in published_articles(token):
+        if article["title"] == title.strip():
+            return article
+    return None
+
+
 def extract(html_path: Path) -> tuple[str, str, str]:
-    html = html_path.read_text(encoding="utf-8")
-    title_m = re.search(r"<title>(.*?)</title>", html, re.S)
-    digest_m = re.search(r'<meta name="description" content="(.*?)"', html, re.S)
-    frag_m = re.search(r"<!-- WECHAT:BEGIN -->(.*?)<!-- WECHAT:END -->", html, re.S)
+    page = html_path.read_text(encoding="utf-8")
+    title_m = re.search(r"<title>(.*?)</title>", page, re.S)
+    digest_m = re.search(r'<meta name="description" content="(.*?)"', page, re.S)
+    frag_m = re.search(r"<!-- WECHAT:BEGIN -->(.*?)<!-- WECHAT:END -->", page, re.S)
     if not frag_m:
         raise SystemExit(f"{html_path} 里找不到 WECHAT:BEGIN/END 片段标记，先跑 make promo-wechat")
     content = frag_m.group(1).strip()
-    title = (title_m.group(1).strip() if title_m else "").strip()
-    summary = (digest_m.group(1).strip() if digest_m else "").strip()
+    title = html.unescape(title_m.group(1)).strip() if title_m else ""
+    summary = html.unescape(digest_m.group(1)).strip() if digest_m else ""
     return title, summary, content
 
 
@@ -160,8 +185,16 @@ def main() -> int:
     if not args.html.exists():
         raise SystemExit(f"找不到 {args.html}，先跑 build-promo-wechat.py")
     title, summary, content = extract(args.html)
+    summary = re.sub(r"\s+", " ", summary).strip()
+    if len(summary) > 120:
+        summary = summary[:119] + "…"
 
     # --- 本地校验：这两条是硬限制，先在本地拦住 -------------------------------
+    if not summary:
+        raise SystemExit(
+            "摘要为空：文章缺少「**一句话卖点**：…」或「导语」段落；"
+            "补上后重新 build-promo-wechat.py（公众号摘要上限 120 字）"
+        )
     if len(content) >= BODY_LIMIT:
         raise SystemExit(
             f"正文 {len(content):,} 字符 ≥ {BODY_LIMIT:,} 的上限，微信会拒收；"
@@ -185,12 +218,12 @@ def main() -> int:
         print("\n--dry-run：未联网。检查通过，去掉 --dry-run 即创建草稿。")
         return 0
 
-    appid = os.environ.get("WECHAT_APPID", "").strip()
-    secret = os.environ.get("WECHAT_APPSECRET", "").strip()
+    appid = (os.environ.get("WECHAT_APPID") or os.environ.get("WX_MP_APPID") or "").strip()
+    secret = (os.environ.get("WECHAT_APPSECRET") or os.environ.get("WX_MP_SECRET") or "").strip()
     if not appid or not secret:
         raise SystemExit(
             "缺少凭据：export WECHAT_APPID=wx... WECHAT_APPSECRET=...\n"
-            "（后台 → 设置与开发 → 基本配置 → 公众号开发信息）"
+            "（或 WX_MP_APPID / WX_MP_SECRET；后台 → 设置与开发 → 基本配置 → 公众号开发信息）"
         )
 
     print("\n1/3 获取 access_token ...")
@@ -215,7 +248,24 @@ def main() -> int:
 
     if args.publish:
         print("\n4/4 提交发布（freepublish/submit）...")
-        print(f"    {submit_publish(token, draft_id)}")
+        result = None
+        for attempt in range(1, 4):
+            try:
+                result = submit_publish(token, draft_id)
+                break
+            except WeChatError as exc:
+                transient = "errcode=-1" in str(exc)
+                if not transient:
+                    raise
+                if attempt == 3:
+                    raise WeChatError(
+                        f"{exc}\n  → 微信侧 system error，重试 3 次仍失败：文章已留在草稿箱，"
+                        "请到后台手动发表（不要把 -1 当作发布成功）"
+                    ) from None
+                print(f"    第 {attempt}/3 次提交返回 system error，10s 后重试")
+                time.sleep(10)
+        print(f"    {result}")
+        print("    已提交发布（结果可在后台「发表记录」查看）")
     else:
         print("\n未发布（默认只建草稿）。确认无误后可加 --publish，或在后台手动点发表。")
     return 0

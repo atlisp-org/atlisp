@@ -131,11 +131,19 @@ cleanup_task_temp() {
 # 清理 call_opencode 等留下的遗留临时文件（进程异常退出时未自清理）
 cleanup_leftover_temp() {
     find "$LOG_DIR" -maxdepth 1 \
-        \( -name 'prompt-*' -o -name 'opencode-out-*' \) \
+        \( -name 'prompt-*' -o -name 'opencode-out-*' -o -name 'opencode-err-*' \) \
         -mtime "+$TEMP_KEEP_DAYS" -exec rm -f {} \; 2>/dev/null || true
     # 失败的文章草稿仅作排查用，保留 30 天
     find "$LOG_DIR" -maxdepth 1 -name 'article-failed-*.md' \
         -mtime +30 -exec rm -f {} \; 2>/dev/null || true
+    # opencode 用量明细（jsonl，不进 *.log 轮转）：只保留最近 2000 条
+    local usage="$LOG_DIR/opencode-usage.jsonl"
+    if [ -f "$usage" ] && [ "$(wc -l < "$usage" 2>/dev/null || echo 0)" -gt 2000 ]; then
+        tail -n 2000 "$usage" > "$usage.tmp.$$" 2>/dev/null \
+            && mv -f "$usage.tmp.$$" "$usage" \
+            || rm -f "$usage.tmp.$$"
+        log_info "清理 opencode 用量明细: 保留最近 2000 条"
+    fi
 }
 
 # 主函数

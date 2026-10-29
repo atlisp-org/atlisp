@@ -63,6 +63,19 @@ def prepare(src: Path | str) -> tuple[str, str, str]:
     # Drop the title-candidates block and the 正文 wrapper heading.
     text = re.sub(r"## 标题备选\n.*?(?=## 正文\n)", "", text, flags=re.S)
     text = text.replace("## 正文\n", "", 1)
+    text = re.sub(r"\A\s*(?:-{3,}[ \t]*\n+)+", "", text)
+
+    # 没有「一句话卖点」时，用导语首段当摘要（并从正文移除，避免重复展示）。
+    if not lede:
+        guide = re.search(r"#{2,3}\s*导语\s*\n+(.+?)(?=\n\s*#{2,3}\s|\Z)", text, flags=re.S)
+        if guide:
+            lede = _plain(guide.group(1))
+            text = (text[: guide.start()] + text[guide.end():]).lstrip()
+    if not lede:
+        para = re.match(r"\s*(.+?)(?=\n\s*\n|\Z)", text, flags=re.S)
+        if para:
+            lede = _plain(para.group(1))
+            text = text[para.end():].lstrip()
 
     # 导语 becomes the lede paragraph (no heading of its own).
     text = re.sub(r"\A\s*### 导语\n+", "", text)
@@ -71,6 +84,17 @@ def prepare(src: Path | str) -> tuple[str, str, str]:
 
     text = re.sub(rf"(?<=[{_CJK}])\n(?=[{_CJK}])", "", text)
     return title, lede, text.strip() + "\n"
+
+
+def _plain(md: str) -> str:
+    """Markdown 片段 → 适合做摘要的纯文本（单行）。"""
+    s = re.sub(r"```.*?```", " ", md, flags=re.S)
+    s = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", s)
+    s = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"[`*_>#|]", "", s)
+    s = re.sub(r"^\s*[-+]\s+", "", s, flags=re.M)
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def digest(lede: str, limit: int = 110) -> str:

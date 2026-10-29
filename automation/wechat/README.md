@@ -23,6 +23,12 @@ export WECHAT_APPSECRET=...
 
 # 建草稿 + 发布
 ./publish.sh ../../atlisp-dwg-kb/docs/推广文章.md --publish
+
+# 产物输出到指定目录（默认与文章同目录；worker 用这个避免污染 docs 仓库）
+./publish.sh article.md --build-dir /path/to/build
+
+# 经跳板机发布（本机出口 IP 不在白名单时用；凭据取自跳板机 server/.env）
+./publish.sh article.md --remote atlisp.cn
 ```
 
 也可以单独跑某一步：
@@ -78,13 +84,34 @@ python3 publish_wechat.py --html article-wechat.html --cover assets/cover-thumb.
 | `build-promo-wechat.py` | Markdown → 公众号正文片段（`WECHAT:BEGIN/END` 标记包裹）+ 预览页 |
 | `build-promo-cover.py` | 生成封面与 ≤64KB 缩略图（品牌名/小字可用 `--brand/--sub` 覆盖） |
 | `publish_wechat.py` | token → 上传封面（永久素材 thumb）→ `draft/add`（可选 `freepublish/submit`） |
-| `publish.sh` | 上面四步一条命令 |
+| `publish.sh` | 上面四步一条命令（`--build-dir DIR` 改产物目录，`--remote HOST` 走跳板机上传） |
+
+## 与 atlisp-worker 集成
+
+每日 05:00 的 `ai-article` 任务生成文章后，worker 会自动调用本工具链：
+
+| 环境变量 | 取值 | 行为 |
+|---|---|---|
+| `WECHAT_ARTICLE_MODE` | `draft`（默认） | 建草稿，人工在后台预览后发表 |
+| | `publish` | 建草稿并调 `freepublish/submit` 直接发布 |
+| | `dry-run` | 只本地构建+校验，不联网 |
+| | `off` | 不发布，只保留文章 |
+| `WECHAT_APPID` / `WECHAT_APPSECRET` | — | **本机直连**时使用（`WECHAT_RELAY_HOST` 为空）；也接受 `WX_MP_APPID` / `WX_MP_SECRET` |
+| `WECHAT_RELAY_HOST` | 默认 `atlisp.cn` | 发布动作经该跳板机执行（构建仍在本机），凭据用跳板机 `~/www/@lisp/server/.env` 的 `WX_MP_APPID/WX_MP_SECRET`；置空则本机直连 |
+
+- 跳板机模式只上传 `<文章>-wechat.html`、`cover-thumb.jpg` 和 `publish_wechat.py`（仅标准库），临时目录 `/tmp/atlisp-wx-*` 用完即删
+- 本机直连时也可以直接用 `WX_MP_APPID` / `WX_MP_SECRET`（与服务端 .env 同名）
+- 构建产物写到 `logs/wechat/<日期>-<包名>/`（不污染 `docs/` 仓库）
+- 每次结果追加到 `logs/wechat-publish.log`
+- `freepublish/submit` 返回 `errcode=-1 system error` 时按**临时故障**处理（自动重试 3 次、间隔 10s）；仍失败则报错并保留草稿箱里的文章，可人工发表。`-1` 绝不当成发布成功
+- 发布失败只记 `[ERROR]` 日志，文章本身照常保留
+- 生成文章时已按本工具的 Markdown 约定输出（`## 标题备选` + `**一句话卖点**`），公众号标题与摘要自动取用
 
 ## 硬限制（脚本会先在本地拦住）
 
 - 正文 HTML **< 20,000 字符**（微信后台限制），超出直接拒跑
 - 封面 ≤ **64KB**，建议 900×383
-- 摘要 ≤ **120 字**（`promo_common.digest()` 自动截断）
+- 摘要 ≤ **120 字**（`promo_common.digest()` 自动截断；**没有「一句话卖点」时自动取导语首段**，摘要为空会拒跑）
 
 ## 测试
 

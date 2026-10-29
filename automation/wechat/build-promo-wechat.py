@@ -17,6 +17,7 @@ Output: `docs/推广文章-wechat.html`
 from __future__ import annotations
 
 import argparse
+import html
 import re
 import sys
 from pathlib import Path
@@ -141,8 +142,8 @@ def main() -> None:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{title}</title>
-<meta name="description" content="{text_digest}">
+<title>{html.escape(title)}</title>
+<meta name="description" content="{html.escape(text_digest, quote=True)}">
 <style>{PREVIEW_CSS}</style>
 </head>
 <body>

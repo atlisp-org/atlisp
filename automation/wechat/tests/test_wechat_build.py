@@ -7,6 +7,7 @@ instead of discovering the rejection only after an API call.
 Run:  python -m pytest automation/wechat/tests
 """
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -114,9 +115,48 @@ def test_prepare_falls_back_to_h1_without_candidates(common, tmp_path):
     title, lede, text = common.prepare(p)
 
     assert title == "直接写在 H1 的标题"
-    assert lede == ""
-    assert text.strip() == "正文一段。"
+    # 没有「一句话卖点」时用首段兜底，保证摘要非空
+    assert lede == "正文一段。"
+    assert text.strip() == ""
+    assert 0 < len(common.digest(lede)) <= 120
 
+
+def test_prepare_falls_back_to_guide_section(common, tmp_path):
+    p = tmp_path / "no-pitch.md"
+    p.write_text(
+        "# 无卖点文章\n\n## 导语\n\n这是导语首段，用来当摘要，长度足够。\n\n"
+        "## 一、小节\n\n正文。\n",
+        encoding="utf-8",
+    )
+
+    title, lede, text = common.prepare(p)
+
+    assert title == "无卖点文章"
+    assert lede.startswith("这是导语首段")
+    # 提为导语后不再在正文重复出现
+    assert "这是导语首段" not in text
+    assert "## 一、小节" in text
+    assert len(common.digest(lede)) <= 120
+
+
+def test_meta_roundtrip_keeps_quotes_in_digest(tmp_path):
+    src = tmp_path / "quote.md"
+    src.write_text(
+        "# 文件标题\n\n"
+        '**一句话卖点**：他说"先看图"再动手，别急着建模。\n\n'
+        "---\n\n## 标题备选\n1. **标题**\n\n## 正文\n\n### 导语\n导语。\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "quote-wechat.html"
+    subprocess.run(
+        [sys.executable, str(HERE / "build-promo-wechat.py"), str(src), "-o", str(out)],
+        check=True,
+        capture_output=True,
+    )
+    publish = _load("publish_wechat_under_test", HERE / "publish_wechat.py")
+    _, summary, _ = publish.extract(out)
+
+    assert summary == '他说"先看图"再动手，别急着建模。'
 
 def test_wechat_fragment_is_inline_styled_and_safe(wechat, article):
     title, summary, fragment = wechat.build(article)
