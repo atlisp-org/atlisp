@@ -53,15 +53,21 @@ const OUT = path.resolve(arg('out', path.join(ROOT, 'media', `demo-${PKG}-${new 
 const KEEP = process.argv.includes('--keep');
 
 function log(...a) { console.log('[demo]', ...a); }
-function fail(msg) { console.error('[demo] 失败:', msg); process.exit(1); }
+function fail(msg) { const e = new Error(msg); e.demoFail = true; throw e; }
 
 // ---------- 0. 临时 HTTP 服务 ----------
 let zipReceived = null;
+let capScript = ''; // 完整抓屏 PS1（经 GET /script.ps1 下发，避免 LISP 字符串过长）
 function startServer() {
   fs.mkdirSync(WORK, { recursive: true });
   if (!fs.existsSync(LOCAL_DWG)) fail(`本机缺车位.dwg: ${LOCAL_DWG}`);
   const srv = http.createServer((req, res) => {
     const url = req.url.split('?')[0];
+    if (req.method === 'GET' && url === '/script.ps1') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(capScript);
+      return;
+    }
     if (req.method === 'GET' && url === '/che-wei.dwg') {
       const st = fs.statSync(LOCAL_DWG);
       res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': st.size });
@@ -102,6 +108,22 @@ async function ev(cad, code, label, timeoutMs = 60000) {
     log(`  ${label} 失败: ${e.message.slice(0, 200)}`);
     return null;
   }
+}
+
+async function ps1Remote(cad, script, label) {
+  capScript = script;
+  const boot = `$log = 'C:\\Users\\vitalgg\\@lisp\\tmp\\demo-cap.log'
+"START $(Get-Date -Format o) $env:COMPUTERNAME" | Out-File -FilePath $log -Encoding utf8
+try {
+  Invoke-WebRequest -Uri 'http://${HOST}:${PORT}/script.ps1' -OutFile 'C:\\Users\\vitalgg\\@lisp\\tmp\\demo-cap.ps1' -UseBasicParsing -TimeoutSec 30
+  "DOWNLOADED $((Get-Item 'C:\\Users\\vitalgg\\@lisp\\tmp\\demo-cap.ps1').Length)" | Out-File -FilePath $log -Append -Encoding utf8
+  & 'C:\\Users\\vitalgg\\@lisp\\tmp\\demo-cap.ps1'
+  "DONE" | Out-File -FilePath $log -Append -Encoding utf8
+} catch {
+  "ERR $($_.Exception.Message)" | Out-File -FilePath $log -Append -Encoding utf8
+}
+`;
+  await ps1(cad, boot, label);
 }
 
 async function ps1(cad, script, label) {
@@ -277,32 +299,34 @@ async function insertRow(cad, row) {
 // ---------- 4. 抓屏 PS1 ----------
 function captureScript(zipName, seconds) {
   return `Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$dir = 'C:\\Users\\vitalgg\\@lisp\\tmp\\demoframes'
-$zip = 'C:\\Users\\vitalgg\\@lisp\\tmp\\${zipName}'
-$done = 'C:\\Users\\vitalgg\\@lisp\\tmp\\demo-capture.txt'
-Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item $zip -Force -ErrorAction SilentlyContinue
-Remove-Item $done -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $dir | Out-Null
-$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$w = $b.Width
-$h = $b.Height
-$jpg = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
-$ep = [System.Drawing.Imaging.EncoderParameters]::new(1)
-$ep.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new([System.Drawing.Imaging.Encoder]::Quality, [long]72)
-$n = 0
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
-while ($sw.Elapsed.TotalSeconds -lt ${seconds}) {
-  $bmp = [System.Drawing.Bitmap]::new($w, $h)
-  $g = [System.Drawing.Graphics]::FromImage($bmp)
-  $g.CopyFromScreen(0, 0, 0, 0, [System.Drawing.Size]::new($w, $h))
-  $g.Dispose()
-  $bmp.Save(($dir + '\\' + ('{0:D5}' -f $n) + '.jpg'), $jpg, $ep)
-  $bmp.Dispose()
-  $n = $n + 1
-  Start-Sleep -Milliseconds 300
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public class WinApi {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr h, EnumProc cb, IntPtr l);
+  [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  public struct RECT { public int L, T, R, B; }
+  public struct POINT { public int X, Y; }
+  public static IntPtr FindView(IntPtr root) {
+    IntPtr found = IntPtr.Zero;
+    EnumChildWindows(root, (h, l) => {
+      var sb = new StringBuilder(256);
+      GetClassName(h, sb, 256);
+      var cn = sb.ToString();
+      if (cn.Contains("ACADDM_CHILD") || cn.Contains("FLIP_MODE_VIEW") || cn.Contains("AcadMdiChild")) {
+        found = h; return false;
+      }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
 }
 [System.IO.Compression.ZipFile]::CreateFromDirectory($dir, $zip)
 try {
@@ -377,7 +401,8 @@ function compose(framesDir, out) {
   const bg = path.join(WORK, 'bg.png');
   execFileSync('python3', [path.join(ROOT, 'bin', 'make-demo-bg.py'), bg]);
   const fc = [
-    `[0:v]scale=1000:563:force_original_aspect_ratio=increase,crop=1000:563[clip]`,
+    `[0:v]crop=iw-40:ih-54:0:24,`
+    + 'scale=1000:563:force_original_aspect_ratio=increase,crop=1000:563[clip]',
     `[1:v]null[bg]`,
     `[bg][clip]overlay=40:820:shortest=1[v]`,
   ];
@@ -434,7 +459,7 @@ try {
   };
   await ev(cad, zoomWin(zcx, zcy, zhh), 'ZOOM-INIT');
   log(`启动抓屏 PS1（${SEC}s）`);
-  await ps1(cad, captureScript(zipName, SEC), 'CAPTURE-START');
+  await ps1Remote(cad, captureScript(zipName, SEC), 'CAPTURE-START');
 
   // 抓屏已在跑：开始画面动作
   await sleep(800);
@@ -486,7 +511,7 @@ try {
   compose(framesDir, OUT);
   log(`完成: ${OUT} (${(fs.statSync(OUT).size / 1024 / 1024).toFixed(1)} MB)`);
 } catch (e) {
-  console.error('[demo] 异常:', e.message.slice(0, 300));
+  console.error(`[demo] ${e.demoFail ? '失败' : '异常'}:`, e.message.slice(0, 300));
   process.exitCode = 1;
 } finally {
   if (KEEP) {
