@@ -251,6 +251,28 @@ def render_plain(draw, pkg, idx, total, text):
     draw.text((W - 80 - draw.textlength(dot, font=f_foot), H - 170), dot, font=f_foot, fill=DIM)
 
 
+SLIDE_LABEL_RE = re.compile(
+    r"^\s*(?:第\s*[0-9一二三四五六七八九十]+\s*(?:屏|页)\s*[·:：、.\-—]?\s*)?"
+    r"(?:钩子|痛点|效果|收益\s*[12一二]?|卖点|命令|标题|CTA|行动)\s*[:：\-—]\s*"
+)
+
+
+def clean_slide(s):
+    """剥掉 AI 抄模板时带的屏标签前缀。
+
+    AI 经常把 JSON 模板里的占位符原样带进来（“第1屏 钩子：真实文案”/“痛点：…”），
+    这些标签会直接画到短视频画面上，所以统一去掉；顺便去掉行首的列表符号。
+    """
+    out = s.strip().strip('"“”').strip()
+    for _ in range(3):
+        new = SLIDE_LABEL_RE.sub("", out).strip()
+        new = re.sub(r"^[\-*·•\d]+[.、)）]?\s*", "", new).strip()
+        if new == out:
+            break
+        out = new
+    return out.rstrip("：: -—").strip()
+
+
 def probe_duration(path):
     """ffprobe 取视频时长（秒）"""
     r = subprocess.run(
@@ -408,7 +430,8 @@ def main():
     title = (copy.get("title") or "").strip()
     topics = [str(t).strip().lstrip("#") for t in (copy.get("topics") or []) if str(t).strip()]
     command = (copy.get("command") or "").strip()
-    slides = [str(s).strip() for s in (copy.get("slides") or []) if str(s).strip()]
+    slides = [clean_slide(str(s)) for s in (copy.get("slides") or []) if str(s).strip()]
+    slides = [s for s in slides if s]
 
     if not qzone_text or not title or not slides:
         print(f"[gen-content] copy.json 缺字段: qzone={bool(qzone_text)} title={bool(title)} slides={len(slides)}", file=sys.stderr)
