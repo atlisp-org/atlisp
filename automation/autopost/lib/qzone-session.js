@@ -7,6 +7,7 @@ import {
   ROOT, abs, launchBrowser, log, sleep, randomDelay, shot, autoHeadless,
   clearQr, cleanStaleQr,
 } from './common.js';
+import { mailQr } from './mail.js';
 
 const HOME_URL = 'https://qzone.qq.com/';
 const HOME_RE = /user\.qzone\.qq\.com\/\d{5,}/;
@@ -177,11 +178,15 @@ export class QzoneSession {
     if (fs.existsSync(markerOf(this.profileDir))) fs.unlinkSync(markerOf(this.profileDir));
     log('[qzone-session] 需要扫码登录，生成二维码...');
     await sleep(2000);
-    if (await snapQr(this.page)) log(`[qzone-session] 二维码已保存: ${QR_FILE}`);
+    if (await snapQr(this.page)) {
+      log(`[qzone-session] 二维码已保存: ${QR_FILE}`);
+      mailQr({ platform: 'QQ空间', image: QR_FILE, url: 'http://192.168.1.100:8123/qzone.png' });
+    }
     log('[qzone-session] 手机打开 http://192.168.1.100:8123/qzone.png 扫码；最多等 10 分钟');
 
     const deadline = Date.now() + 10 * 60 * 1000;
     let lastReload = Date.now();
+    let mailed = 1; // 已发邮件数（换码再发，最多 3 封）
     while (Date.now() < deadline) {
       if (HOME_RE.test(this.page.url())) break;
       const expired = await this.page
@@ -195,7 +200,18 @@ export class QzoneSession {
         lastReload = Date.now();
         await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
         await sleep(2000);
-        if (await snapQr(this.page)) log('[qzone-session] 二维码已换新，请刷新浏览器重新扫码');
+        if (await snapQr(this.page)) {
+          log('[qzone-session] 二维码已换新，请刷新浏览器重新扫码');
+          if (mailed < 3) {
+            mailed++;
+            mailQr({
+              platform: 'QQ空间',
+              image: QR_FILE,
+              url: 'http://192.168.1.100:8123/qzone.png',
+              note: '已换新码，旧码作废，请扫这一张',
+            });
+          }
+        }
       }
       await sleep(2000);
     }

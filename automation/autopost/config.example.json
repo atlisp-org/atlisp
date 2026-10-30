@@ -34,5 +34,9 @@
         "profileDir": "state/profiles/channels"
       }
     }
+  },
+  "mail": {
+    "enabled": true,
+    "to": "vitalgg@foxmail.com"
   }
 }

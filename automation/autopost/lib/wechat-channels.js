@@ -14,6 +14,7 @@ import {
   ROOT, loadConfig, abs, launchBrowser, saveState, log, sleep, shot, autoHeadless,
   clearQr, cleanStaleQr,
 } from './common.js';
+import { mailQr } from './mail.js';
 
 const LOGIN_URL = 'https://channels.weixin.qq.com/login.html';
 const HOME_RE = /channels\.weixin\.qq\.com\/platform\//;
@@ -116,6 +117,7 @@ async function channelsWebLoginInner({ headless } = {}) {
       if (await snapQr(page)) {
         log(`[channels] 二维码已保存: ${QR_FILE}`);
         log('[channels] 手机微信「扫一扫」打开 http://192.168.1.100:8123/wechat.png 并确认');
+        mailQr({ platform: '视频号', image: QR_FILE, url: 'http://192.168.1.100:8123/wechat.png' });
       } else {
         log('[channels] 二维码截图失败，90 秒后自动重试');
       }
@@ -123,6 +125,7 @@ async function channelsWebLoginInner({ headless } = {}) {
 
       const deadline = Date.now() + 10 * 60 * 1000;
       let lastReload = Date.now();
+      let mailed = 1; // 已发邮件数（换码再发，最多 3 封，避免刷屏）
       let ok = false;
       while (Date.now() < deadline) {
         if (HOME_RE.test(page.url())) {
@@ -134,8 +137,18 @@ async function channelsWebLoginInner({ headless } = {}) {
           lastReload = Date.now();
           await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
           await sleep(2000);
-          if (await snapQr(page)) log('[channels] 二维码已换新（页面已重载），请重新扫码');
-          else log('[channels] 二维码截图仍失败，继续等待重试');
+          if (await snapQr(page)) {
+            log('[channels] 二维码已换新（页面已重载），请重新扫码');
+            if (mailed < 3) {
+              mailed++;
+              mailQr({
+                platform: '视频号',
+                image: QR_FILE,
+                url: 'http://192.168.1.100:8123/wechat.png',
+                note: '已换新码，旧码作废，请扫这一张',
+              });
+            }
+          } else log('[channels] 二维码截图仍失败，继续等待重试');
         }
         await sleep(2000);
       }

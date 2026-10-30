@@ -153,7 +153,16 @@ node scripts/qr-server.mjs 8123     # 服务 logs/qrcode/qzone.png，同一局�
 # 方式二：拷文件
 scp user@server:/home/vitalgg/atlisp/autopost/logs/qrcode/qzone.png .
 # 在手机上打开图片，用 QQ / 抖音「扫一扫」扫它
+
+# 方式三：二维码自动发到邮箱（人不在机器前时用；二维码是内嵌图，同一时刻换码会再发）
+#   凭证：EMAIL_PASSWORD 环境变量，或 ~/.atlisp-email-config（KEY=VALUE）
+#   开关/收件人：config.json 的 "mail": { "enabled": true, "to": "..." }
+#   注意：手机看自己邮箱里的码扫不了，要另找一块屏幕（电脑/平板/另一部手机）打开邮件
+python3 bin/mail-qr.py --platform QQ空间 --image logs/qrcode/qzone.png
 ```
+
+登录流程在截到二维码后会**自动发一封**（视频号、QQ空间同样），换码时最多再补发 2 封
+（一封一换会刷屏）；邮件打不开/没收到可以直接用上面的命令手动发一次。
 
 之后所有发布/调度命令（qzone-post、douyin-publish --web、schedule）都用
 headless 跑，不需要显示器（自动判断：Linux 无 `DISPLAY` 时 headless）。
