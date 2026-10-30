@@ -1,2 +1,0 @@
-示例：这是一条自动发布的说说，发布后请删除或忽略
-img: /path/to/your/photo.jpg
