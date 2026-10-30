@@ -6,7 +6,7 @@
 #   3. 写入队列：
 #      queue/qzone/<YYYYMMDD>-<pkg>.txt    首行=说说文字，img: 行=第一屏图片
 #      queue/douyin/<YYYYMMDD>-<pkg>.json  { video, title, topics, private }
-#      queue/channels/<YYYYMMDD>-<pkg>.json { video, title, desc, private }
+#      queue/channels/<YYYYMMDD>-<pkg>.json { video, title(≤16字短标题), fullTitle, desc, private }
 #
 # copy.json 结构（opencode 产出）：
 #   {
@@ -273,6 +273,45 @@ def clean_slide(s):
     return out.rstrip("：: -—").strip()
 
 
+# 视频号短标题：平台限 16 字，只允许 中文/字母/数字/空格/《》「」“”:：+?？%℃ 等符号
+# （其余符号会触发「标题包含特殊字符」拦截发表，见 lib/wechat-channels.js）
+TITLE_KEEP_RE = re.compile(
+    r"[\u4e00-\u9fff\u3400-\u4dbfA-Za-z0-9\s《》〈〉「」『』“”‘’\":：+?？%℃]"
+)
+
+
+def _sanitize_short(s):
+    """按视频号短标题白名单清洗（禁用符号换成空格），与 wechat-channels.js 保持一致"""
+    out = "".join(ch if TITLE_KEEP_RE.match(ch) else " " for ch in s or "")
+    return re.sub(r"\s+", " ", out).strip()
+
+
+def short_title(title, limit=16):
+    """按句末标点把标题压到 16 字以内，避免平台硬截断把句子拦腰切断。
+
+    「几十条线各偏移三道？一句命令在 CAD 里批量搞定」
+    → 「几十条线各偏移三道？」（完整问句，而不是「…一句命令在 」）
+    一整句就超长时才退化按字截断，并尽量不切掉结尾的英文/数字串。
+    """
+    t = _sanitize_short(title)
+    if len(t) <= limit:
+        return t
+    best = ""
+    # 先按原文断句再清洗，避免 ！。 被当禁用符号抹掉后句子黏成一串
+    for raw in re.split(r"(?<=[。！？!?])", title or ""):
+        sent = _sanitize_short(raw)
+        if not sent:
+            continue
+        cand = f"{best} {sent}".strip() if best else sent
+        if len(cand) > limit:
+            break
+        best = cand
+    if len(best) >= 6:
+        return best
+    cut = re.sub(r"[A-Za-z0-9]+$", "", t[:limit]).rstrip()
+    return cut if len(cut) >= 6 else t[:limit].strip()
+
+
 def probe_duration(path):
     """ffprobe 取视频时长（秒）"""
     r = subprocess.run(
@@ -493,16 +532,24 @@ def main():
     )
     print(f"[gen-content] 抖音队列: {douyin_file} (title={title!r}, topics={topics})")
 
-    # 6) 写视频号队列（desc 复用说说的文字，自带话题标签）
+    # 6) 写视频号队列（desc 复用说说文字；title 是平台限 16 字的短标题）
     channels_file.parent.mkdir(parents=True, exist_ok=True)
+    st = short_title(title)
     channels_file.write_text(
         json.dumps(
-            {"video": f"media/{d}-{pkg}.mp4", "title": title, "desc": qzone_text, "private": False},
-            ensure_ascii=False, indent=2,
+            {
+                "video": f"media/{d}-{pkg}.mp4",
+                "title": st,
+                "fullTitle": title,
+                "desc": qzone_text,
+                "private": False,
+            },
+            ensure_ascii=False,
+            indent=2,
         ) + "\n",
         encoding="utf-8",
     )
-    print(f"[gen-content] 视频号队列: {channels_file}")
+    print(f"[gen-content] 视频号队列: {channels_file} (title={st!r})")
 
 
 if __name__ == "__main__":

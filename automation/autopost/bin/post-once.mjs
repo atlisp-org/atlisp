@@ -5,6 +5,7 @@
 // 队列规则（与 bin/schedule.js 一致）：
 //   - qzone:  queue/qzone/*.txt   首行=文字，img: 行=图片路径
 //   - douyin: queue/douyin/*.json { "video": "路径", "title": "标题", "topics": [".."], "private": false }
+//   - channels: queue/channels/*.json { "video", "title"(≤16字短标题), "desc", "private" }
 //   - 跳过 . 开头的文件（示例/模板）
 //
 // 用法:
@@ -67,7 +68,7 @@ async function main() {
     if (!content.video) throw new Error('JSON 缺少 video 字段');
     await channelsWebPublish({
       video: content.video,
-      title: content.title || '',
+      title: content.shortTitle || content.title || '',
       desc: content.desc || '',
       dryRun,
     });

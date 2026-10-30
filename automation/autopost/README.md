@@ -57,7 +57,7 @@ autopost/
 ├── queue/                # 内容队列（发布成功后移入 posted/）
 │   ├── qzone/*.txt       # 首行=文字，img: 行=图片路径
 │   ├── douyin/*.json     # { video, title, topics, private }
-│   └── channels/*.json   # { video, title, desc, private }（微信视频号）
+│   └── channels/*.json   # { video, title(≤16字短标题), fullTitle, desc, private }（微信视频号）
 ├── media/                # 生成的竖版视频 & 画面帧（已 gitignore）
 ├── state/                # 登录态 & token（已 gitignore，勿外传）
 │   └── profiles/qzone/   # 空间浏览器持久化 profile（等同账号凭证，勿外传）
