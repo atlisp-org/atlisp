@@ -120,7 +120,8 @@ make all
 - 任务编排完全由数据驱动：`automation/schedule.json`（默认基线）→ `logs/schedule.json`（生效配置）
 - 支持按天去重、宽限期补跑（`grace_seconds`）、按优先级并发（AI 任务 3 路 / 普通任务 2 路）
 - 每天 06:00 的自我迭代任务会分析运行指标并**自动改写自身调度**（候选配置经
-  `validate-schedule.py` 校验通过才生效，历史备份在 `logs/schedule-history/`）
+  `validate-schedule.py` 校验通过才生效，历史备份在 `logs/schedule-history/`；
+  校验器强制保留 `self-review`、`introspection`、`ai-forum` 三个任务，防止常态能力被优化掉）
 - AI 报告有效性按「非空 + mtime ≥ 本次任务开始」判定；未写出报告时回退只写
   `*.attempt-fallback.bak`，不覆盖正式报告路径（防止残留转储被误判为成功）
 - AI 任务超时按即败型处理（同 prompt 重试大概率再超时，直接归档失败 + 邮件告警）
@@ -146,7 +147,43 @@ make all
 work-service.sh 使用的任务类型（schedule.json 的 `type` 字段）：
 `sync`、`lint`、`optimize`、`generate`、`docs`、`clean`、`full-check`
 以及 `ai-*` 系列（`ai-review`、`ai-suggest`、`ai-plan`、`ai-article`、`ai-self-review`、
-`ai-introspect`、`ai-fix-all`、`ai-execute-plan` 等）。
+`ai-introspect`、`ai-fix-all`、`ai-execute-plan`、`ai-forum` 等）。
+
+### 社区需求扫描（ai-forum / ai-forum-3）
+
+从明经论坛（`bbs.mjtd.com`）定期提取真实需求，转成可审批的开发计划：
+
+- `ai-forum`：首页，每周一/四 07:30
+- `ai-forum-3`：AutoLISP/Visual LISP 编程技术版（`forum-3`），每周二/五 07:45，
+  `data` 为 `board:3`（同一处理器按 `board:N` 切换版块）
+
+1. `automation/forum-scan.py` 抓首页热帖（标题/浏览/回复/新帖标记）+ 热帖首楼正文，
+   输出 `reports/forum-digest-<date>.md`；GBK 自动转 UTF-8，已见帖 ID 记在
+   `logs/forum/seen.json`（只增不重分析）。加 `--board 3` 可扫指定版块
+   （如 `forum-3` AutoLISP/Visual LISP 编程技术），`make forum-scan BOARD=3`。
+
+   **反爬处理**（`automation/forum_http.py`，不尝试绕过）：
+   - 识别 JS 跳转/验证码、403/429/503、以及「版块/帖子正文标记缺失」的挑战页；
+   - 基础延迟 2s，遇挑战指数退避（上限 30s），有 `Retry-After` 时按它等待；
+   - 连续 `--max-challenges`（默认 3；`forum-scan` 默认 2）次挑战即熔断，
+     保存已抓内容并停止，不继续压站；
+   - 被拦截的详情标记为「反爬拦截」，不写入正文缓存；
+   - 可用 `--delay/--max-delay/--cooldown/--max-challenges` 调整。
+2. `ai-forum` 任务把摘要交给 AI，对照 `packages/`、`lib/src/`、`atlispcc/` 判断
+   已覆盖/部分覆盖/未覆盖，写 `reports/forum[-N]-insights-<date>.md`。
+3. 报告中的 Top 候选（最多 3 条、工作量 S/M）写入 `reports/forum-candidates-<date>.json`，
+   由 worker 自动转成 **待审批计划**（`plans/pending/`），不会直接改代码。
+
+人工审阅与执行：
+
+```bash
+bash automation/plan-manager.sh list          # 看待审批计划
+bash automation/plan-manager.sh show <id>     # 看内容
+bash automation/plan-manager.sh approve <id>  # 批准 → worker 生成 ai-execute-plan 任务
+python3 automation/forum-scan.py --out /tmp/digest.md --top 5   # 手工试抓（首页）
+python3 automation/forum-scan.py --board 3 --out /tmp/f3.md     # 手工试抓（forum-3）
+make forum-crawl                                                # 全站限速扫描（约 4 分钟）
+```
 
 ### 传统 cron/fcron（备选）
 
@@ -197,6 +234,10 @@ worker 的 `grace_seconds` 补跑机制与 fcron 的"错过后开机补执行"�
 | `self-review.sh` | 汇总运行指标，生成 06:00 自我迭代任务的输入 |
 | `introspect.sh` | 汇总决策与教训，生成 06:30 自省任务的输入 |
 | `project-analyzer.py` | 扫描 git/lint/测试/文档/技术债，生成《开发建议报告》 |
+| `forum-scan.py` | 抓取 bbs.mjtd.com 首页或指定版块（`--board N`）热帖 + 首楼正文，生成 Markdown 摘要（GBK→UTF-8、新帖标记、状态去重） |
+| `forum-crawl.py` | 全站限速扫描：发现全部版块 → 列表页 → 高价值帖首楼；默认 2–3s/请求，自适应退避 + 反爬熔断，增量状态可续跑；输出 JSON + Markdown |
+| `forum_http.py` | 论坛 HTTP 公共层：反爬检测、指数退避、`Retry-After`、连续挑战熔断（不绕过验证） |
+| `test_forum_http.py` | 反爬检测与限速器单元测试（`python3 -m unittest`） |
 | `log-manager.sh` | 日志轮转/清理（保留策略见文件头配置）；由 `clean` 任务自动调用 |
 | `plan-manager.sh` | 计划审批（list/approve/reject/expire/status） |
 | `check-vllm.sh` | 本地 vllm 服务就绪检查（`check` / `wait`） |

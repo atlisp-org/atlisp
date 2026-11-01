@@ -9,6 +9,8 @@ LIB_DIR := $(TARGET_DIR)/lib
 VSCODE_DIR := $(TARGET_DIR)/vscode
 DOCS_DIR := $(TARGET_DIR)/docs
 LINT_TOOL := $(TARGET_DIR)/atlisp-lint/bin/atlisp-lint
+LIBRARY_DIR := $(HOME)/www/dw/library
+LIBRARY_TOOLS := $(TARGET_DIR)/server/scripts/library
 PYTHON := python3
 
 # 默认目标
@@ -36,6 +38,10 @@ help:
 	@echo "  lint-install  - 安装git pre-commit钩子"
 	@echo "  lint-cache    - 清除lint缓存"
 	@echo "  docs          - 生成文档"
+	@echo "  library-index - 重建图库索引（www/dw/library/index，增量）"
+	@echo "  library-check - 图库体检报告（重复/基点偏移/单位缺失）"
+	@echo "  library-dedupe- 图库重复符号方案（默认不动文件）"
+	@echo "  library-classify - 未分类符号归位建议"
 	@echo "  build-vscode  - 构建VSCode扩展"
 	@echo "  test-vscode   - 测试VSCode扩展"
 	@echo "  clean         - 清理构建产物"
@@ -48,6 +54,8 @@ help:
 	@echo "  status-projects - 显示独立项目状态"
 	@echo "  suggestions   - 生成开发建议报告"
 	@echo "  suggestions-latest - 查看最新建议"
+	@echo "  forum-scan    - 抓取明经论坛热帖生成摘要（BOARD=3 指定版块）"
+	@echo "  forum-crawl   - 全站限速扫描（所有版块首页 + 重点版块第2页）"
 	@echo "  email-setup   - 配置邮件通知"
 	@echo "  email-test    - 测试邮件发送"
 	@echo "  all           - 运行所有检查"
@@ -78,6 +86,27 @@ lint:
 	@echo "$(BLUE)运行代码检查...$(NC)"
 	cd $(LIB_DIR) && $(LINT_TOOL) --src src
 	cd $(PACKAGES_DIR) && $(LINT_TOOL) --src .
+
+# 图库索引（www/dw/library → index/library-index.json + library.tsv + 体检报告）
+.PHONY: library-index
+library-index:
+	@echo "$(BLUE)重建图库索引（增量，首次约 8 分钟）...$(NC)"
+	$(PYTHON) $(LIBRARY_TOOLS)/build_index.py --root $(LIBRARY_DIR)
+
+.PHONY: library-check
+library-check:
+	@echo "$(BLUE)图库体检...$(NC)"
+	$(PYTHON) $(LIBRARY_TOOLS)/build_index.py --root $(LIBRARY_DIR)
+	@echo ""
+	@sed -n '1,45p' $(LIBRARY_DIR)/index/library-report.md
+
+.PHONY: library-dedupe
+library-dedupe:
+	$(PYTHON) $(LIBRARY_TOOLS)/dedupe.py --root $(LIBRARY_DIR)
+
+.PHONY: library-classify
+library-classify:
+	$(PYTHON) $(LIBRARY_TOOLS)/classify.py --root $(LIBRARY_DIR)
 
 # 代码检查并自动修复
 .PHONY: lint-fix
@@ -113,6 +142,30 @@ docs:
 	@echo "$(BLUE)生成文档...$(NC)"
 	cd $(LIB_DIR) && $(PYTHON) generate_manifest.py
 	@echo "$(GREEN)文档生成完成$(NC)"
+
+# 抓取明经论坛（bbs.mjtd.com）热帖，生成 Markdown 摘要
+# 用法：make forum-scan            # 首页
+#       make forum-scan BOARD=3    # forum-3（AutoLISP/Visual LISP 编程技术）
+FORUM_NAME = $(if $(BOARD),forum-$(BOARD)-,)
+.PHONY: forum-scan
+forum-scan:
+	@echo "$(BLUE)抓取明经论坛摘要...$(NC)"
+	@mkdir -p reports
+	$(PYTHON) automation/forum-scan.py $(if $(BOARD),--board $(BOARD),) \
+		--out reports/$(FORUM_NAME)digest-$$(date +%Y%m%d).md
+	@echo "$(GREEN)摘要已生成: reports/$(FORUM_NAME)digest-$$(date +%Y%m%d).md$(NC)"
+
+# 全站限速扫描：33 个版块首页 + 重点版块第 2 页 + 高价值帖首楼
+.PHONY: forum-crawl
+forum-crawl:
+	@echo "$(BLUE)全站扫描（约 3s/请求，请耐心等待）...$(NC)"
+	@mkdir -p reports
+	$(PYTHON) -u automation/forum-crawl.py --boards all --pages 1 \
+		--deep-boards 3,16,25,35,47,27,37,89,6 --deep-pages 2 \
+		--details 35 --delay 3.0 \
+		--out-json reports/forum-crawl-$$(date +%Y%m%d).json \
+		--out-md reports/forum-crawl-$$(date +%Y%m%d).md
+	@echo "$(GREEN)扫描完成: reports/forum-crawl-$$(date +%Y%m%d).md$(NC)"
 
 # 构建VSCode扩展
 .PHONY: build-vscode
